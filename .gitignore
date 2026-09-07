@@ -1,0 +1,16 @@
+.DS_Store
+.env
+.env.*
+!.env.example
+data/
+artifacts/
+*.db
+*.db-wal
+*.db-shm
+*.sqlite
+*.sqlite3
+__pycache__/
+.venv/
+.pytest_cache/
+bin/
+coverage.out
