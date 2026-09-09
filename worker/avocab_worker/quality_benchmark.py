@@ -39,7 +39,7 @@ class QualityBenchmark:
         self,
         profile_path: str | Path = "config/production-profile.json",
         config_path: str | Path = "config/quality-benchmark-v1.json",
-        allow_paid: bool = True
+        allow_paid: bool = False
     ):
         load_env_file()
         self.profile_path = Path(profile_path)
@@ -122,6 +122,8 @@ class QualityBenchmark:
 
     def run(self, max_workers: int = 3, progress_callback=None) -> dict[str, Any]:
         """Execute double evaluation on all benchmark cases and produce audit report."""
+        if not self.allow_paid:
+            raise BlockedConfigurationError("blocked_configuration: real model calls require --allow-paid")
         from concurrent.futures import ThreadPoolExecutor, as_completed
         from avocab_worker.provider_client import ProviderClient
         from avocab_worker.prompts import build_evaluator_prompt
@@ -207,7 +209,10 @@ class QualityBenchmark:
                     eval_verdicts.append("uncertain")
                 elif any(r == "reject" for r in ratings.values()):
                     eval_verdicts.append("reject")
-                elif all(r == "pass" for r in ratings.values()):
+                elif all(ratings.get(key) == "pass" for key in (
+                    "target_meaning", "grammar", "naturalness", "distractor_validity",
+                    "unique_answer", "explanation_consistency"
+                )) and all(r == "pass" for r in ratings.values()):
                     eval_verdicts.append("pass")
                 else:
                     eval_verdicts.append("uncertain")
@@ -382,7 +387,7 @@ def main():
     parser.add_argument("--profile", default="config/production-profile.json", help="Path to production profile")
     parser.add_argument("--config", default="config/quality-benchmark-v1.json", help="Path to benchmark config")
     parser.add_argument("--output", default="artifacts/quality-benchmark/report.json", help="Path to output report")
-    parser.add_argument("--allow-paid", action="store_true", default=True, help="Explicit flag authorizing paid calls")
+    parser.add_argument("--allow-paid", action="store_true", help="Explicit flag authorizing paid calls")
     parser.add_argument("--concurrency", type=int, default=4, help="Number of concurrent case evaluation workers")
     args = parser.parse_args()
 
@@ -398,6 +403,10 @@ def main():
     except Exception as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
         sys.exit(1)
+
+    if not args.allow_paid:
+        print("BLOCKED_CONFIGURATION: real model calls require --allow-paid", file=sys.stderr)
+        sys.exit(2)
 
     print(f"=== Running M11 Quality Benchmark ===")
     print(f"Model: {benchmark.evaluator_cfg.get('model')} @ {benchmark.evaluator_cfg.get('base_url')}")

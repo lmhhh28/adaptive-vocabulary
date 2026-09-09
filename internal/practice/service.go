@@ -15,14 +15,14 @@ import (
 )
 
 var (
-	ErrBankNotFound       = errors.New("bank not found")
-	ErrBankArchived       = errors.New("bank is archived")
-	ErrSessionNotFound    = errors.New("session not found")
-	ErrSessionClosed      = errors.New("session is closed")
-	ErrInstanceNotFound   = errors.New("instance not found")
-	ErrInvalidOption      = errors.New("invalid option for this instance")
-	ErrInvalidRequest     = errors.New("invalid request")
-	ErrMaintenance        = errors.New("system under maintenance")
+	ErrBankNotFound     = errors.New("bank not found")
+	ErrBankArchived     = errors.New("bank is archived")
+	ErrSessionNotFound  = errors.New("session not found")
+	ErrSessionClosed    = errors.New("session is closed")
+	ErrInstanceNotFound = errors.New("instance not found")
+	ErrInvalidOption    = errors.New("invalid option for this instance")
+	ErrInvalidRequest   = errors.New("invalid request")
+	ErrMaintenance      = errors.New("system under maintenance")
 )
 
 type ActiveSessionConflictError struct {
@@ -732,20 +732,20 @@ func (s *Service) SubmitAttempt(
 		}
 
 		att := &learning.AttemptEvent{
-			ID:              attemptID,
-			InstanceID:      req.InstanceID,
-			SessionID:       sessionID,
-			SenseID:         snap.SenseID,
-			TaskFamily:      snap.TaskFamily,
-			Source:          learning.SourcePractice,
-			Purpose:         snap.Purpose,
-			ResponseHistory: learning.ResponseSingleResponse,
+			ID:               attemptID,
+			InstanceID:       req.InstanceID,
+			SessionID:        sessionID,
+			SenseID:          snap.SenseID,
+			TaskFamily:       snap.TaskFamily,
+			Source:           learning.SourcePractice,
+			Purpose:          snap.Purpose,
+			ResponseHistory:  learning.ResponseSingleResponse,
 			SelectedOptionID: &req.OptionID,
 			FinalOptionID:    &req.OptionID,
-			GradingVersion:  "grading-v1",
-			IsCorrect:       isCorrect,
-			ObservedAt:      nowMicro,
-			CreatedAt:       nowMicro,
+			GradingVersion:   "grading-v1",
+			IsCorrect:        isCorrect,
+			ObservedAt:       nowMicro,
+			CreatedAt:        nowMicro,
 		}
 		if req.Telemetry != nil {
 			att.ClientActiveDurationMs = req.Telemetry.ClientActiveDurationMs
@@ -837,13 +837,37 @@ func (s *Service) EndSession(
 	expectedRevision *int64,
 	reason string,
 ) (*EndSessionResult, error) {
+	res, _, err := s.EndSessionIdempotent(ctx, sessionID, expectedRevision, reason, "", "", "")
+	return res, err
+}
+
+func (s *Service) EndSessionIdempotent(
+	ctx context.Context, sessionID string, expectedRevision *int64, reason, scope, key, digest string,
+) (*EndSessionResult, bool, error) {
 	if reason != "ended" && reason != "abandoned" {
-		return nil, ErrInvalidRequest
+		return nil, false, ErrInvalidRequest
 	}
 
 	var result *EndSessionResult
+	replayed := false
 
 	err := core.RunInTx(ctx, s.db, func(tc *core.TxnContext) error {
+		if key != "" {
+			rec, err := core.CheckIdempotency(tc, "POST", scope, key, digest)
+			if err != nil {
+				return err
+			}
+			if rec != nil {
+				if err := json.Unmarshal([]byte(rec.ResponseBody), &result); err != nil {
+					return err
+				}
+				replayed = true
+				return nil
+			}
+		}
+		if err := core.CheckMaintenance(tc); err != nil {
+			return ErrMaintenance
+		}
 		// 1. Load session
 		querySess := `
 			SELECT id, kind, status, bank_id, cursor, normal_position, revision, last_ack_sequence, deadline_at, created_at, updated_at
@@ -913,12 +937,22 @@ func (s *Service) EndSession(
 			Session:             &sess,
 			UnresolvedUnitCount: unresolvedCount,
 		}
+		if key != "" {
+			body, err := json.Marshal(result)
+			if err != nil {
+				return err
+			}
+			return core.SaveIdempotencyRecord(tc, &core.IdempotencyRecord{
+				Operation: "POST", ResourceScope: scope, Key: key, RequestDigest: digest,
+				Status: "completed", ResponseCode: 200, ResponseBody: string(body), CreatedAt: nowMicro,
+			})
+		}
 
 		return nil
 	})
 
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
-	return result, nil
+	return result, replayed, nil
 }

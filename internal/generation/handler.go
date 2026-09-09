@@ -432,6 +432,14 @@ func (h *Handler) HandleComplete(w http.ResponseWriter, r *http.Request) {
 
 	now := time.Now().UTC().UnixMicro()
 	resp, err := h.service.CompleteItem(r.Context(), req, now)
+	if errors.Is(err, core.ErrIdempotencyConflict) {
+		core.WriteJSONError(w, r, http.StatusConflict, "IDEMPOTENCY_CONFLICT", "completion payload differs from committed result", nil)
+		return
+	}
+	if errors.Is(err, ErrInvalidCandidateContent) {
+		core.WriteJSONError(w, r, http.StatusBadRequest, "INVALID_REQUEST", err.Error(), nil)
+		return
+	}
 	if errors.Is(err, ErrLeaseLost) {
 		core.WriteJSONError(w, r, http.StatusConflict, "LEASE_LOST", "lease expired or fencing token superseded", nil)
 		return

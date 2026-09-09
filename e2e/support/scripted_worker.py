@@ -1,5 +1,6 @@
 """Scripted HTTP worker client for E2E testing of the internal generation protocol."""
 from pathlib import Path
+import uuid
 import httpx
 
 
@@ -138,3 +139,19 @@ class ScriptedWorker:
             "reason": reason
         }
         return self.client.post("/internal/v1/generation/complete", json=payload)
+
+    def evaluated_reservations(self, item: dict, candidate_index: int) -> tuple[str, list[str]]:
+        """Create three distinct settled calls bound to this exact candidate."""
+        reservations = []
+        for stage, evaluation_index in [("generator", 0), ("evaluator", 0), ("evaluator", 1)]:
+            logical_key = {"attempt_number": item["attempt_number"], "stage": stage,
+                           "candidate_index": candidate_index, "evaluation_index": evaluation_index}
+            response = self.reserve(item["item_id"], item["fencing_token"], item["input_digest"],
+                                    logical_key, str(uuid.uuid4()))
+            assert response.status_code == 200, response.text
+            rid = response.json()["reservation_id"]
+            settled = self.settle(rid, item["item_id"], item["fencing_token"], item["input_digest"],
+                                  outcome="response", usage={"input_tokens": 50, "output_tokens": 50})
+            assert settled.status_code == 200, settled.text
+            reservations.append(rid)
+        return reservations[0], reservations[1:]

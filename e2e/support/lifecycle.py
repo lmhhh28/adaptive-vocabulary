@@ -1,6 +1,5 @@
 """Subprocess lifecycle manager for starting, polling, and stopping avocab processes."""
 import json
-import os
 from pathlib import Path
 import signal
 import subprocess
@@ -27,8 +26,8 @@ class ManagedProcess:
         except subprocess.TimeoutExpired:
             self.proc.kill()
             self.proc.wait(timeout=2.0)
-        except Exception:
-            self.proc.kill()
+        except ProcessLookupError:
+            self.proc.wait(timeout=2.0)
 
 
 def start_server(
@@ -51,7 +50,6 @@ def start_server(
 
     log_dir.mkdir(parents=True, exist_ok=True)
     log_path = log_dir / "server.log"
-    log_file = log_path.open("w", encoding="utf-8")
 
     cmd = [
         str(bin_path),
@@ -66,79 +64,51 @@ def start_server(
     if seed:
         cmd.extend(["--seed", seed])
 
-    proc = subprocess.Popen(
-        cmd,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        text=True,
-        bufsize=1,
-    )
-
-    ready_data = None
-    start_time = time.time()
-
-    while time.time() - start_time < startup_timeout:
-        if proc.poll() is not None:
-            log_file.close()
-            output = log_path.read_text(encoding="utf-8") if log_path.is_file() else ""
-            raise RuntimeError(f"Server process terminated unexpectedly with code {proc.returncode}: {output}")
-
-        line = proc.stdout.readline()
-        if line:
-            log_file.write(line)
-            log_file.flush()
-            line_str = line.strip()
-            if line_str.startswith("{") and '"ready"' in line_str:
-                try:
-                    data = json.loads(line_str)
-                    if data.get("ready"):
+    # A regular file cannot block waiting for a newline, unlike PIPE.readline().
+    # The child owns its descriptor; the parent closes all handles deterministically.
+    with log_path.open("w", encoding="utf-8") as log_file:
+        proc = subprocess.Popen(cmd, stdout=log_file, stderr=subprocess.STDOUT)
+    try:
+        ready_data = None
+        deadline = time.monotonic() + startup_timeout
+        pending = ""
+        with log_path.open(encoding="utf-8", errors="replace") as reader:
+            while time.monotonic() < deadline:
+                pending += reader.read()
+                while "\n" in pending:
+                    line, pending = pending.split("\n", 1)
+                    try:
+                        data = json.loads(line)
+                    except json.JSONDecodeError:
+                        continue
+                    if isinstance(data, dict) and data.get("ready") and data.get("base_url"):
                         ready_data = data
                         break
-                except json.JSONDecodeError:
+                if ready_data:
+                    break
+                if proc.poll() is not None:
+                    raise RuntimeError(f"Server process terminated unexpectedly with code {proc.returncode}: "
+                                       + log_path.read_text(errors="replace"))
+                time.sleep(min(0.02, max(0, deadline - time.monotonic())))
+        if ready_data is None:
+            raise TimeoutError(f"Server did not emit ready signal within {startup_timeout}s")
+
+        with httpx.Client(trust_env=False) as client:
+            while time.monotonic() < deadline and proc.poll() is None:
+                try:
+                    response = client.get(f"{ready_data['base_url']}/api/v1/health",
+                                          timeout=min(1.0, max(0.001, deadline - time.monotonic())))
+                    if response.status_code == 200:
+                        return ManagedProcess(proc, ready_data, log_path)
+                except httpx.HTTPError:
                     pass
-        else:
-            time.sleep(0.05)
-
-    if ready_data is None:
-        proc.kill()
+                time.sleep(min(0.02, max(0, deadline - time.monotonic())))
+        raise TimeoutError(f"Health check failed within startup timeout {startup_timeout}s")
+    except BaseException:
+        if proc.poll() is None:
+            proc.kill()
         proc.wait(timeout=2.0)
-        log_file.close()
-        raise TimeoutError(f"Server did not emit ready signal within {startup_timeout}s")
-
-    # Start a background logger thread or continue redirecting
-    def drain_logs():
-        try:
-            for remaining in proc.stdout:
-                log_file.write(remaining)
-                log_file.flush()
-        except Exception:
-            pass
-        finally:
-            log_file.close()
-
-    import threading
-    t = threading.Thread(target=drain_logs, daemon=True)
-    t.start()
-
-    # Poll health endpoint
-    base_url = ready_data["base_url"]
-    health_ok = False
-    deadline = time.time() + 5.0
-    while time.time() < deadline:
-        try:
-            resp = httpx.get(f"{base_url}/api/v1/health", timeout=1.0)
-            if resp.status_code == 200:
-                health_ok = True
-                break
-        except Exception:
-            time.sleep(0.05)
-
-    if not health_ok:
-        proc.kill()
-        proc.wait(timeout=2.0)
-        raise RuntimeError("Health check failed after ready signal")
-
-    return ManagedProcess(proc, ready_data, log_path)
+        raise
 
 
 @contextmanager

@@ -1,4 +1,4 @@
-"""QL-01: Benchmark Negative Interception and Positive Pass Acceptance Test.
+"""QL-01: Audit recorded live benchmark evidence; never make external calls in E2E.
 
 Verifies that:
 1. All known negative cases across 6 categories (>=5 per category, >=30 total) are intercepted (0 leakage).
@@ -29,25 +29,8 @@ def run(context: dict) -> dict:
         from avocab_worker.quality_benchmark import QualityBenchmark
 
         report_path = ROOT / "artifacts/quality-benchmark/report.json"
-        report = None
-
-        # Check if recent report exists (within last 30 minutes)
-        if report_path.is_file():
-            try:
-                data = json.loads(report_path.read_text(encoding="utf-8"))
-                mtime = report_path.stat().st_mtime
-                if time.time() - mtime < 1800 and data.get("determination", {}).get("authorized_for_auto_publishing"):
-                    report = data
-            except Exception:
-                report = None
-
-        if report is None:
-            # Run benchmark directly
-            profile_path = os.environ.get("PROFILE", str(ROOT / "config/production-profile.json"))
-            benchmark = QualityBenchmark(profile_path=profile_path, allow_paid=True)
-            report = benchmark.run(max_workers=3)
-            report_path.parent.mkdir(parents=True, exist_ok=True)
-            report_path.write_text(json.dumps(report, indent=2, ensure_ascii=False), encoding="utf-8")
+        assert report_path.is_file(), "Missing live benchmark evidence; run make quality-live explicitly before auditing M11"
+        report = json.loads(report_path.read_text(encoding="utf-8"))
 
         # Copy report to case artifacts
         case_report_path = case_dir / "report.json"
@@ -86,6 +69,10 @@ def run(context: dict) -> dict:
             "status": "passed",
             "artifacts": artifacts,
             "details": {
+                "evidence_mode": "historical_live_report_audit",
+                "live_calls_this_case": 0,
+                "report_age_seconds": round(time.time() - report_path.stat().st_mtime),
+                "scope": "Recorded model results only; does not reauthorize changed prompts or current model behavior",
                 "negative_total": neg["total"],
                 "negative_intercepted": neg["intercepted"],
                 "negative_leaked": neg["leaked"],

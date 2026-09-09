@@ -277,7 +277,8 @@ class GenerationWorkflow:
                 return {"status": "failed", "stop_reason": str(exc)}
 
             eval_dict = {
-                "profile_version": call_res.content.get("profile_version", "v1"),
+                # Trace the profile that authorized this call; model output cannot choose it.
+                "profile_version": self.config.config_version,
                 "model": call_res.content.get("model", self.config.evaluator_cfg.get("model", "test-evaluator")),
                 "prompt_version": call_res.content.get("prompt_version", "v1"),
                 "ratings": call_res.content.get("ratings", {}),
@@ -296,7 +297,10 @@ class GenerationWorkflow:
             elif any(r == "reject" for r in ratings.values()):
                 eval_verdicts.append("reject")
                 reasons.append(ev.get("rationale", "Rejected evaluation"))
-            elif all(r == "pass" for r in ratings.values()):
+            elif all(ratings.get(key) == "pass" for key in (
+                "target_meaning", "grammar", "naturalness", "distractor_validity",
+                "unique_answer", "explanation_consistency"
+            )) and all(r == "pass" for r in ratings.values()):
                 eval_verdicts.append("pass")
             else:
                 eval_verdicts.append("uncertain")

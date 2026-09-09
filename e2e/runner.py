@@ -3,10 +3,11 @@ Guarantees isolated execution, subprocess cleanup, result.json output, and non-z
 """
 import argparse
 from datetime import datetime, timezone
-import importlib.util
 import json
 import os
 from pathlib import Path
+import signal
+import subprocess
 import sys
 import time
 import uuid
@@ -14,6 +15,54 @@ import uuid
 ROOT = Path(__file__).resolve().parents[1]
 CASES_DIR = ROOT / "e2e" / "cases"
 ARTIFACTS_DIR = ROOT / "artifacts" / "e2e"
+
+
+def execute_case(case_file: Path, context: dict, timeout: float) -> dict:
+    """Bound imports and run() together, then clean the entire case process group."""
+    case_dir = context["case_dir"]
+    context_path = case_dir / "context.json"
+    result_path = case_dir / "case-result.json"
+    log_path = case_dir / "case.log"
+    context_path.write_text(json.dumps(context, default=str))
+    result_path.unlink(missing_ok=True)
+    started = time.monotonic()
+    timed_out = False
+    with log_path.open("w") as stream:
+        proc = subprocess.Popen([sys.executable, "-u", str(ROOT / "e2e/support/case_worker.py"),
+                                 str(case_file), str(context_path), str(result_path)],
+                                stdout=stream, stderr=subprocess.STDOUT, start_new_session=True)
+        try:
+            proc.wait(timeout=timeout)
+        except subprocess.TimeoutExpired:
+            timed_out = True
+        finally:
+            # Also clean descendants after an assertion failure or early worker exit.
+            try:
+                os.killpg(proc.pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+            proc.wait(timeout=5)
+    if timed_out:
+        result = {"status": "failed", "error": f"Case exceeded {timeout}s hard timeout"}
+    elif proc.returncode != 0:
+        result = {"status": "failed", "error": f"Case worker exited with code {proc.returncode}; see {log_path}"}
+    elif not result_path.is_file():
+        result = {"status": "failed", "error": "Case worker did not produce a result"}
+    else:
+        try:
+            result = json.loads(result_path.read_text())
+            if not isinstance(result, dict) or result.get("status") not in ("passed", "failed"):
+                raise ValueError("run(context) must explicitly return status=passed or failed")
+            if not isinstance(result.get("artifacts", []), list) or not isinstance(result.get("details", {}), dict):
+                raise ValueError("Invalid artifacts or details in case result")
+        except (ValueError, TypeError) as exc:
+            result = {"status": "failed", "error": str(exc)}
+    result["duration_seconds"] = round(time.monotonic() - started, 3)
+    result["worker_exit_code"] = proc.returncode
+    result["artifacts"] = [str(log_path)] + result.get("artifacts", [])
+    # Persist failures caused by timeout/exit too, so every case has an explicit result.
+    result_path.write_text(json.dumps(result, ensure_ascii=False, indent=2) + "\n")
+    return result
 
 
 def discover_cases(module: str) -> list[tuple[str, Path]]:
@@ -34,7 +83,13 @@ def main():
     parser = argparse.ArgumentParser(description="Run E2E test acceptance suites")
     parser.add_argument("module", nargs="?", default="all", help="Module ID to test (e.g. M00, M01, or all)")
     parser.add_argument("--bin", default=None, help="Path to avocab binary")
+    parser.add_argument("--case-timeout", type=float, default=120,
+                        help="Hard timeout per case, including import (seconds; default 120)")
     args = parser.parse_args()
+    if args.case_timeout <= 0 or not args.case_timeout < float("inf"):
+        parser.error("--case-timeout must be a positive finite number")
+    if sys.flags.optimize:
+        parser.error("Optimized Python disables acceptance assertions; unset PYTHONOPTIMIZE")
 
     module = args.module
     cases = discover_cases(module)
@@ -42,8 +97,8 @@ def main():
         print(f"ERROR: Zero test cases found for module {module}. Runner requires implemented tests.", file=sys.stderr)
         sys.exit(1)
 
-    bin_path = Path(args.bin) if args.bin else (ROOT / "bin" / "avocab-e2e")
-    if not bin_path.is_file():
+    bin_path = Path(args.bin).resolve() if args.bin else (ROOT / "bin" / "avocab-e2e")
+    if not args.bin and not bin_path.is_file():
         bin_path = ROOT / "bin" / "avocab"
     if not bin_path.is_file():
         print(f"ERROR: Binary not found at {bin_path}. Run 'make build' first.", file=sys.stderr)
@@ -83,18 +138,10 @@ def main():
         print(f"-> Running {case_name} ...", end=" ", flush=True)
 
         try:
-            spec = importlib.util.spec_from_file_location(case_name, case_file)
-            mod = importlib.util.module_from_spec(spec)
-            sys.modules[case_name] = mod
-            spec.loader.exec_module(mod)
-
-            if not hasattr(mod, "run"):
-                raise AttributeError(f"{case_file} missing 'run(context)' entrypoint")
-
-            res = mod.run(context)
+            res = execute_case(case_file, context, args.case_timeout)
             duration = round(time.time() - t0, 3)
 
-            status = res.get("status", "passed")
+            status = res["status"]
             artifacts = res.get("artifacts", [])
             details = res.get("details", {})
 
@@ -113,6 +160,8 @@ def main():
                 "duration_seconds": duration,
                 "artifacts": artifacts,
                 "details": details,
+                "error": res.get("error"),
+                "worker_exit_code": res["worker_exit_code"],
             })
             all_artifact_paths.extend(artifacts)
 
@@ -149,6 +198,7 @@ def main():
         "start_time": start_iso,
         "end_time": end_iso,
         "exit_codes": exit_codes,
+        "case_timeout_seconds": args.case_timeout,
         "artifact_paths": all_artifact_paths,
     }
 

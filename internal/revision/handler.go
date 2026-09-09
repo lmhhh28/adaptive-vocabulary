@@ -132,8 +132,18 @@ func (h *Handler) handleEvidenceDisposition(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	resp, err := h.service.ApplyEvidenceDisposition(r.Context(), versionID, req.Action, req.Reason, req.ExpectedRevision)
+	body, _ := json.Marshal(req)
+	digest, _ := core.ComputeRequestDigest(body)
+	resp, replayed, err := h.service.ApplyEvidenceDispositionIdempotent(r.Context(), versionID, req.Action, req.Reason, req.ExpectedRevision, r.Header.Get("Idempotency-Key"), digest)
 	if err != nil {
+		if errors.Is(err, core.ErrIdempotencyConflict) {
+			core.WriteJSONError(w, r, http.StatusConflict, "IDEMPOTENCY_CONFLICT", "Idempotency key payload conflict", nil)
+			return
+		}
+		if errors.Is(err, core.ErrUnderMaintenance) {
+			core.WriteJSONError(w, r, http.StatusServiceUnavailable, "MAINTENANCE", "System is rebuilding", nil)
+			return
+		}
 		if errors.Is(err, ErrSessionActive) {
 			core.WriteJSONError(w, r, http.StatusConflict, "SESSION_ACTIVE", "Active session exists; please end or submit session before applying disposition", nil)
 			return
@@ -154,6 +164,9 @@ func (h *Handler) handleEvidenceDisposition(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
+	if replayed {
+		w.Header().Set("Idempotent-Replayed", "true")
+	}
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-store")
 	w.WriteHeader(http.StatusOK)

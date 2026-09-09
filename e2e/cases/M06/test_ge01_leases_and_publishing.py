@@ -179,12 +179,13 @@ def run(context: dict) -> dict:
             ],
             "result": "reject"
         }
+        gen2, evals2 = worker2.evaluated_reservations(item2, 1)
         cand2_resp = worker2.submit_candidate(
             item2["item_id"], item2["fencing_token"], item2["input_digest"],
             attempt_number=item2["attempt_number"], candidate_index=1,
             content=cand_content,
-            generator_reservation_id=gen_res_id,
-            evaluator_reservation_ids=[eval1_res_id, eval2_res_id],
+            generator_reservation_id=gen2,
+            evaluator_reservation_ids=evals2,
             checks=reject_checks
         )
         assert cand2_resp.status_code == 200
@@ -200,12 +201,13 @@ def run(context: dict) -> dict:
             ],
             "result": "uncertain"
         }
+        gen3, evals3 = worker2.evaluated_reservations(item2, 2)
         cand3_resp = worker2.submit_candidate(
             item2["item_id"], item2["fencing_token"], item2["input_digest"],
             attempt_number=item2["attempt_number"], candidate_index=2,
             content=cand_content,
-            generator_reservation_id=gen_res_id,
-            evaluator_reservation_ids=[eval1_res_id, eval2_res_id],
+            generator_reservation_id=gen3,
+            evaluator_reservation_ids=evals3,
             checks=uncertain_checks
         )
         assert cand3_resp.status_code == 200

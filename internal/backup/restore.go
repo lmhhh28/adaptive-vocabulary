@@ -58,6 +58,15 @@ func (s *Service) RestoreBackup(ctx context.Context, inputDir, targetDir string)
 		}, ErrActiveTargetDirectory
 	}
 	defer func() { _ = lock.Release() }()
+	entries, err := os.ReadDir(absTargetDir)
+	if err != nil {
+		return nil, fmt.Errorf("inspect restore destination: %w", err)
+	}
+	for _, entry := range entries {
+		if entry.Name() != "process.lock" {
+			return nil, fmt.Errorf("restore target must be an empty new directory: %s", absTargetDir)
+		}
+	}
 
 	// 3. Copy snapshot files into targetDir
 	srcAppDB := filepath.Join(inputDir, "app.db")

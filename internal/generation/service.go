@@ -797,24 +797,39 @@ func (s *Service) SubmitCandidate(ctx context.Context, req SubmitCandidateReques
 		}
 
 		// 2. Verify reservations in metadata
-		if req.GenerationMetadata.GeneratorReservationID == "" {
-			return errors.New("missing generator_reservation_id")
+		verifyCall := func(reservationID, stage string) (int, string, error) {
+			var evaluationIndex int
+			var profile string
+			err := tc.QueryRow(`SELECT evaluation_index, profile_version FROM generation_call
+				WHERE reservation_id = ? AND item_id = ? AND stage = ?
+				AND status = 'settled' AND outcome = 'response'
+				AND owner_worker_id = ? AND fencing_token = ?
+				AND attempt_number = ? AND candidate_index = ? AND input_sha256 <> ''`,
+				reservationID, req.ItemID, stage, req.WorkerID, req.FencingToken,
+				req.AttemptNumber, req.CandidateIndex).Scan(&evaluationIndex, &profile)
+			if errors.Is(err, sql.ErrNoRows) {
+				return 0, "", fmt.Errorf("%w: %s reservation does not prove a successful call for this candidate", ErrInvalidCandidateContent, stage)
+			}
+			return evaluationIndex, profile, err
 		}
-		var genResCount int
-		err = tc.QueryRow("SELECT COUNT(*) FROM generation_call WHERE reservation_id = ? AND item_id = ?",
-			req.GenerationMetadata.GeneratorReservationID, req.ItemID).Scan(&genResCount)
-		if err != nil || genResCount == 0 {
-			return errors.New("invalid or unassociated generator_reservation_id")
+		if _, _, err := verifyCall(req.GenerationMetadata.GeneratorReservationID, "generator"); err != nil {
+			return err
 		}
-
-		if len(req.GenerationMetadata.EvaluatorReservationIDs) < s.policy.SemanticEvaluations {
-			return fmt.Errorf("requires at least %d evaluator reservations", s.policy.SemanticEvaluations)
+		if len(req.GenerationMetadata.EvaluatorReservationIDs) != s.policy.SemanticEvaluations {
+			return fmt.Errorf("%w: requires exactly %d evaluator reservations", ErrInvalidCandidateContent, s.policy.SemanticEvaluations)
 		}
-		for _, evalID := range req.GenerationMetadata.EvaluatorReservationIDs {
-			var evalCount int
-			err = tc.QueryRow("SELECT COUNT(*) FROM generation_call WHERE reservation_id = ? AND item_id = ?", evalID, req.ItemID).Scan(&evalCount)
-			if err != nil || evalCount == 0 {
-				return fmt.Errorf("invalid or unassociated evaluator_reservation_id: %s", evalID)
+		evaluationIndexes := make(map[int]bool)
+		for index, evalID := range req.GenerationMetadata.EvaluatorReservationIDs {
+			evaluationIndex, profile, err := verifyCall(evalID, "evaluator")
+			if err != nil {
+				return err
+			}
+			if evaluationIndexes[evaluationIndex] {
+				return fmt.Errorf("%w: evaluator calls must have distinct evaluation indexes", ErrInvalidCandidateContent)
+			}
+			evaluationIndexes[evaluationIndex] = true
+			if index < len(req.Checks.SemanticEvaluations) && req.Checks.SemanticEvaluations[index].ProfileVersion != profile {
+				return fmt.Errorf("%w: evaluator profile does not match reservation", ErrInvalidCandidateContent)
 			}
 		}
 
@@ -824,10 +839,15 @@ func (s *Service) SubmitCandidate(ctx context.Context, req SubmitCandidateReques
 		if req.Checks.Result != "pass" {
 			allPass = false
 		}
-		if len(req.Checks.SemanticEvaluations) < s.policy.SemanticEvaluations {
+		if len(req.Checks.SemanticEvaluations) != s.policy.SemanticEvaluations {
 			allPass = false
 		}
 		for _, eval := range req.Checks.SemanticEvaluations {
+			for _, dimension := range []string{"target_meaning", "unique_answer", "grammar", "naturalness", "explanation_consistency", "distractor_validity"} {
+				if eval.Ratings[dimension] != "pass" {
+					allPass = false
+				}
+			}
 			for _, rat := range eval.Ratings {
 				if rat != "pass" {
 					allPass = false
@@ -1052,20 +1072,44 @@ func (s *Service) SubmitCandidate(ctx context.Context, req SubmitCandidateReques
 }
 
 func (s *Service) CompleteItem(ctx context.Context, req CompleteItemRequest, nowMicro int64) (*CompleteItemResponse, error) {
+	switch req.Outcome {
+	case "completed", "needs_attention", "budget_exhausted", "failed":
+	default:
+		return nil, fmt.Errorf("%w: invalid completion outcome", ErrInvalidCandidateContent)
+	}
 	var resp *CompleteItemResponse
+	body, err := json.Marshal(req)
+	if err != nil {
+		return nil, err
+	}
+	digest, err := core.ComputeRequestDigest(body)
+	if err != nil {
+		return nil, err
+	}
+	scope := "/internal/v1/generation/complete/" + req.ItemID
+	key := fmt.Sprintf("%s/%d", req.WorkerID, req.FencingToken)
 
-	err := core.RunInTx(ctx, s.db, func(tc *core.TxnContext) error {
+	err = core.RunInTx(ctx, s.db, func(tc *core.TxnContext) error {
+		rec, err := core.CheckIdempotency(tc, "POST", scope, key, digest)
+		if err != nil {
+			return err
+		}
+		if rec != nil {
+			return json.Unmarshal([]byte(rec.ResponseBody), &resp)
+		}
 		var jobID string
 		var leaseOwner sql.NullString
 		var fencingToken int64
 		var inputDigest string
+		var status string
+		var leaseUntil sql.NullInt64
 
 		queryItem := `
-			SELECT job_id, lease_owner, fencing_token, input_digest
+			SELECT job_id, lease_owner, fencing_token, input_digest, status, lease_until
 			FROM generation_item
 			WHERE id = ?
 		`
-		err := tc.QueryRow(queryItem, req.ItemID).Scan(&jobID, &leaseOwner, &fencingToken, &inputDigest)
+		err = tc.QueryRow(queryItem, req.ItemID).Scan(&jobID, &leaseOwner, &fencingToken, &inputDigest, &status, &leaseUntil)
 		if errors.Is(err, sql.ErrNoRows) {
 			return ErrItemNotFound
 		}
@@ -1073,7 +1117,8 @@ func (s *Service) CompleteItem(ctx context.Context, req CompleteItemRequest, now
 			return fmt.Errorf("lookup item: %w", err)
 		}
 
-		if !leaseOwner.Valid || leaseOwner.String != req.WorkerID || fencingToken != req.FencingToken || inputDigest != req.InputDigest {
+		if status != "claimed" || !leaseUntil.Valid || nowMicro >= leaseUntil.Int64 ||
+			!leaseOwner.Valid || leaseOwner.String != req.WorkerID || fencingToken != req.FencingToken || inputDigest != req.InputDigest {
 			return ErrLeaseLost
 		}
 
@@ -1117,7 +1162,14 @@ func (s *Service) CompleteItem(ctx context.Context, req CompleteItemRequest, now
 			ItemStatus: req.Outcome,
 			Revision:   jobRev,
 		}
-		return nil
+		responseBody, err := json.Marshal(resp)
+		if err != nil {
+			return err
+		}
+		return core.SaveIdempotencyRecord(tc, &core.IdempotencyRecord{
+			Operation: "POST", ResourceScope: scope, Key: key, RequestDigest: digest,
+			Status: "completed", ResponseCode: 200, ResponseBody: string(responseBody), CreatedAt: nowMicro,
+		})
 	})
 
 	if err != nil {

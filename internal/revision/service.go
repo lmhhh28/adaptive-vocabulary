@@ -13,15 +13,15 @@ import (
 )
 
 var (
-	ErrSessionActive     = errors.New("cannot perform operation while a session is active")
-	ErrRevisionConflict  = errors.New("revision conflict on question version")
-	ErrVersionNotFound   = errors.New("question version not found")
-	ErrInvalidAction     = errors.New("invalid disposition action")
+	ErrSessionActive    = errors.New("cannot perform operation while a session is active")
+	ErrRevisionConflict = errors.New("revision conflict on question version")
+	ErrVersionNotFound  = errors.New("question version not found")
+	ErrInvalidAction    = errors.New("invalid disposition action")
 )
 
 type Service struct {
-	db             *sql.DB
-	maintService   *maintenance.Service
+	db           *sql.DB
+	maintService *maintenance.Service
 }
 
 func NewService(db *sql.DB, maintService *maintenance.Service) *Service {
@@ -44,25 +44,40 @@ func (s *Service) ApplyEvidenceDisposition(
 	reason string,
 	expectedRevision *int64,
 ) (*EvidenceDispositionResponse, error) {
-	if action != "disputed" && action != "invalidate" && action != "restore_validity" {
-		return nil, fmt.Errorf("%w: %s", ErrInvalidAction, action)
-	}
+	resp, _, err := s.ApplyEvidenceDispositionIdempotent(ctx, versionID, action, reason, expectedRevision, "", "")
+	return resp, err
+}
 
-	// 1. Check for active sessions OUTSIDE transaction first
-	var openCount int
-	err := s.db.QueryRowContext(ctx, "SELECT count(*) FROM session WHERE status = 'open'").Scan(&openCount)
-	if err != nil {
-		return nil, fmt.Errorf("check active sessions: %w", err)
-	}
-	if openCount > 0 {
-		return nil, ErrSessionActive
+func (s *Service) ApplyEvidenceDispositionIdempotent(
+	ctx context.Context, versionID, action, reason string, expectedRevision *int64, key, digest string,
+) (*EvidenceDispositionResponse, bool, error) {
+	if action != "disputed" && action != "invalidate" && action != "restore_validity" {
+		return nil, false, fmt.Errorf("%w: %s", ErrInvalidAction, action)
 	}
 
 	var dispID string
 	var run *maintenance.ModelRebuildRun
+	var receipt *EvidenceDispositionResponse
 	now := time.Now().UTC().UnixNano() / 1000
+	scope := fmt.Sprintf("/api/v1/question-versions/%s/evidence-dispositions", versionID)
 
-	err = core.RunInTx(ctx, s.db, func(tc *core.TxnContext) error {
+	err := core.RunInTx(ctx, s.db, func(tc *core.TxnContext) error {
+		if key != "" {
+			rec, err := core.CheckIdempotency(tc, "POST", scope, key, digest)
+			if err != nil {
+				return err
+			}
+			if rec != nil {
+				if err := json.Unmarshal([]byte(rec.ResponseBody), &receipt); err != nil {
+					return err
+				}
+				// The durable reference is saved atomically with the disposition.
+				return tc.QueryRow("SELECT status FROM model_rebuild_run WHERE id = ?", receipt.RebuildRunID).Scan(&receipt.Status)
+			}
+		}
+		if err := core.CheckMaintenance(tc); err != nil {
+			return err
+		}
 		// Re-check for active sessions INSIDE write transaction
 		var openInTx int
 		err := tc.QueryRow("SELECT count(*) FROM session WHERE status = 'open'").Scan(&openInTx)
@@ -261,7 +276,7 @@ func (s *Service) ApplyEvidenceDisposition(
 			return fmt.Errorf("get projection control: %w", err)
 		}
 
-		digest, err := s.maintService.ComputeRevisionDigest(ctx, tc)
+		revisionDigest, err := s.maintService.ComputeRevisionDigest(ctx, tc)
 		if err != nil {
 			return fmt.Errorf("compute revision digest: %w", err)
 		}
@@ -280,7 +295,7 @@ func (s *Service) ApplyEvidenceDisposition(
 			BaseActiveVersion:       pc.ActiveVersion,
 			TargetProjectionVersion: targetVersion,
 			TargetPolicy:            "policy-v2",
-			BaseRevisionDigest:      digest,
+			BaseRevisionDigest:      revisionDigest,
 			FixedWatermark:          watermark,
 			Status:                  "running",
 			RequiresRebuild:         true,
@@ -317,11 +332,24 @@ func (s *Service) ApplyEvidenceDisposition(
 		if err != nil {
 			return fmt.Errorf("insert evidence_disposition: %w", err)
 		}
+		if key != "" {
+			body, err := json.Marshal(EvidenceDispositionResponse{DispositionID: dispID, RebuildRunID: run.ID, Status: run.Status})
+			if err != nil {
+				return err
+			}
+			return core.SaveIdempotencyRecord(tc, &core.IdempotencyRecord{
+				Operation: "POST", ResourceScope: scope, Key: key, RequestDigest: digest,
+				Status: "completed", ResponseCode: 200, ResponseBody: string(body), CreatedAt: now,
+			})
+		}
 
 		return nil
 	})
 	if err != nil {
-		return nil, err
+		return nil, false, err
+	}
+	if receipt != nil {
+		return receipt, true, nil
 	}
 
 	// 2. Perform Rebuild synchronously
@@ -335,7 +363,7 @@ func (s *Service) ApplyEvidenceDisposition(
 		DispositionID: dispID,
 		RebuildRunID:  run.ID,
 		Status:        status,
-	}, nil
+	}, false, nil
 }
 
 // RetireQuestionVersion marks a version as retired.

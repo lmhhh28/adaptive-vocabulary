@@ -10,7 +10,7 @@ export UV_PYTHON_BIN_DIR := $(ROOT)/.tools/python-bin
 export LANGGRAPH_STRICT_MSGPACK := true
 export PLAYWRIGHT_BROWSERS_PATH := $(ROOT)/.tools/playwright
 
-.PHONY: bootstrap sync check content e2e-tools check-browser tasks task build build-e2e run e2e run-generation-lab quality-live
+.PHONY: bootstrap sync check content e2e-tools check-browser tasks task build build-e2e run test e2e run-generation-lab quality-live
 bootstrap:
 	python3 scripts/bootstrap.py
 
@@ -55,11 +55,10 @@ test:
 	$(GO) test ./...
 
 e2e: build build-e2e
-	$(UV) run --directory e2e --locked python runner.py $(MODULE)
+	$(UV) run --directory e2e --locked python runner.py $(MODULE) $(E2E_ARGS)
 
 run-generation-lab: build build-e2e
 	$(UV) run --directory worker --locked python -m avocab_worker lab --data-dir $(if $(DATA_DIR),$(DATA_DIR),artifacts/manual/M07)
 
 quality-live:
-	$(UV) run --directory worker --locked python -m avocab_worker.quality_benchmark --profile $(if $(PROFILE),$(PROFILE),config/production-profile.json)
-
+	$(UV) run --directory worker --locked python -m avocab_worker.quality_benchmark --allow-paid --profile $(if $(PROFILE),$(PROFILE),config/production-profile.json)

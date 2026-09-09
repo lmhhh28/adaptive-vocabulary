@@ -4,6 +4,8 @@
   "prompt_version": "v1",
   "ratings": {
     "target_meaning": "pass",
+    "grammar": "pass",
+    "explanation_consistency": "pass",
     "naturalness": "pass",
     "distractor_validity": "pass",
     "unique_answer": "pass"

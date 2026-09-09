@@ -42,6 +42,11 @@ func (s *Service) CreateBackup(ctx context.Context, dataDir, outputDir string, i
 	if err != nil {
 		return nil, fmt.Errorf("resolve output directory: %w", err)
 	}
+	if _, err := os.Lstat(absOutputDir); err == nil {
+		return nil, fmt.Errorf("backup output must be a new directory: %s", absOutputDir)
+	} else if !os.IsNotExist(err) {
+		return nil, fmt.Errorf("inspect output directory: %w", err)
+	}
 
 	// Create a temporary directory in the same parent directory to allow atomic rename
 	parentDir := filepath.Dir(absOutputDir)
@@ -186,9 +191,11 @@ func (s *Service) CreateBackup(ctx context.Context, dataDir, outputDir string, i
 		return nil, fmt.Errorf("chmod temp dir: %w", err)
 	}
 
-	// Remove target if it already exists to allow overwrite/atomic rename
-	if _, err := os.Stat(absOutputDir); err == nil {
-		_ = os.RemoveAll(absOutputDir)
+	// Never delete an existing destination, including the source or a prior backup.
+	if _, err := os.Lstat(absOutputDir); err == nil {
+		return nil, fmt.Errorf("backup output appeared during snapshot: %s", absOutputDir)
+	} else if !os.IsNotExist(err) {
+		return nil, fmt.Errorf("inspect output directory before rename: %w", err)
 	}
 
 	if err := os.Rename(tempDir, absOutputDir); err != nil {

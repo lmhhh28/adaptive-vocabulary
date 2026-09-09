@@ -219,7 +219,12 @@ func TestBackupVerificationFailures(t *testing.T) {
 	}
 
 	// Restore original manifest and app.db for next test
-	_, _ = svc.CreateBackup(ctx, srcDir, backupDir, false)
+	if err := os.RemoveAll(backupDir); err != nil {
+		t.Fatalf("remove corrupted test fixture: %v", err)
+	}
+	if _, err := svc.CreateBackup(ctx, srcDir, backupDir, false); err != nil {
+		t.Fatalf("recreate clean backup fixture: %v", err)
+	}
 
 	// Case B: Path traversal in manifest
 	var m backup.Manifest

@@ -13,17 +13,17 @@ import (
 )
 
 var (
-	ErrExamNotFound             = errors.New("exam session not found")
-	ErrBankNotFound             = errors.New("bank not found")
-	ErrBankArchived             = errors.New("bank is archived")
-	ErrSessionClosed            = errors.New("exam session is closed")
-	ErrExamSubmittedDeadline    = errors.New("exam submitted due to deadline expiration")
-	ErrInstanceNotFound         = errors.New("question instance not found in this exam")
-	ErrInvalidOption            = errors.New("invalid option for this question")
-	ErrInvalidRequest           = errors.New("invalid request")
-	ErrMaintenance              = errors.New("system under maintenance")
-	ErrPreconditionRequired     = errors.New("precondition required")
-	ErrExamNotSubmitted         = errors.New("exam has not been submitted")
+	ErrExamNotFound          = errors.New("exam session not found")
+	ErrBankNotFound          = errors.New("bank not found")
+	ErrBankArchived          = errors.New("bank is archived")
+	ErrSessionClosed         = errors.New("exam session is closed")
+	ErrExamSubmittedDeadline = errors.New("exam submitted due to deadline expiration")
+	ErrInstanceNotFound      = errors.New("question instance not found in this exam")
+	ErrInvalidOption         = errors.New("invalid option for this question")
+	ErrInvalidRequest        = errors.New("invalid request")
+	ErrMaintenance           = errors.New("system under maintenance")
+	ErrPreconditionRequired  = errors.New("precondition required")
+	ErrExamNotSubmitted      = errors.New("exam has not been submitted")
 )
 
 type ActiveSessionConflictError struct {
@@ -113,8 +113,8 @@ func (s *Service) CreateExam(
 	}
 
 	var (
-		res       *CreateExamResponse
-		isReplay  bool
+		res      *CreateExamResponse
+		isReplay bool
 	)
 
 	err = core.RunInTx(ctx, s.db, func(tc *core.TxnContext) error {
@@ -444,8 +444,21 @@ func (s *Service) RecordResponseEvent(
 		res      *ResponseEventResponse
 		isReplay bool
 	)
+	deadlineSubmitted := false
 
 	err := core.RunInTx(ctx, s.db, func(tc *core.TxnContext) error {
+		// Committed receipts remain readable after closure or maintenance.
+		rec, err := core.CheckIdempotency(tc, "POST", fmt.Sprintf("/api/v1/exams/%s/response-events", examID), req.ClientEventID, requestDigest)
+		if err != nil {
+			return err
+		}
+		if rec != nil {
+			if err := json.Unmarshal([]byte(rec.ResponseBody), &res); err != nil {
+				return err
+			}
+			isReplay = true
+			return nil
+		}
 		// 1. Maintenance check
 		if err := core.CheckMaintenance(tc); err != nil {
 			return ErrMaintenance
@@ -459,7 +472,7 @@ func (s *Service) RecordResponseEvent(
 			deadlineAt      sql.NullInt64
 		)
 		querySess := `SELECT status, revision, last_ack_sequence, deadline_at FROM session WHERE id = ? AND kind = 'exam'`
-		err := tc.QueryRow(querySess, examID).Scan(&status, &currentRevision, &lastAckSequence, &deadlineAt)
+		err = tc.QueryRow(querySess, examID).Scan(&status, &currentRevision, &lastAckSequence, &deadlineAt)
 		if errors.Is(err, sql.ErrNoRows) {
 			return ErrExamNotFound
 		}
@@ -475,23 +488,12 @@ func (s *Service) RecordResponseEvent(
 
 		// 3. Deadline check -> auto-submit if expired
 		if deadlineAt.Valid && nowMicro >= deadlineAt.Int64 {
-			// Settle and auto-submit
-			_, _ = s.submitExamInternal(tc, examID, "auto_deadline", true)
-			return ErrExamSubmittedDeadline
-		}
-
-		// 4. Check existing idempotency for this client_event_id
-		rec, err := core.CheckIdempotency(tc, "POST", fmt.Sprintf("/api/v1/exams/%s/response-events", examID), req.ClientEventID, requestDigest)
-		if errors.Is(err, core.ErrIdempotencyConflict) {
-			return err
-		}
-		if rec != nil {
-			var savedRes ResponseEventResponse
-			if err := json.Unmarshal([]byte(rec.ResponseBody), &savedRes); err == nil {
-				res = &savedRes
-				isReplay = true
-				return nil
+			if _, err := s.submitExamInternal(tc, examID, "auto_deadline", true); err != nil {
+				return err
 			}
+			// Commit settlement before rejecting the late action.
+			deadlineSubmitted = true
+			return nil
 		}
 
 		// 5. Validate expected_revision
@@ -667,6 +669,9 @@ func (s *Service) RecordResponseEvent(
 		return nil, false, err
 	}
 
+	if deadlineSubmitted {
+		return nil, false, ErrExamSubmittedDeadline
+	}
 	return res, isReplay, nil
 }
 
@@ -678,13 +683,13 @@ func (s *Service) GetResponseEventReceipt(ctx context.Context, examID, clientEve
 		WHERE session_id = ? AND client_event_id = ?
 	`
 	var (
-		eventID    string
-		cEventID   string
-		cSeq       int64
-		accRev     int64
-		instID     string
-		action     string
-		optID      sql.NullString
+		eventID  string
+		cEventID string
+		cSeq     int64
+		accRev   int64
+		instID   string
+		action   string
+		optID    sql.NullString
 	)
 	err := s.db.QueryRowContext(ctx, query, examID, clientEventID).Scan(&eventID, &cEventID, &cSeq, &accRev, &instID, &action, &optID)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -811,6 +816,19 @@ func (s *Service) SubmitExam(
 	)
 
 	err := core.RunInTx(ctx, s.db, func(tc *core.TxnContext) error {
+		if idempotencyKey != "" {
+			rec, err := core.CheckIdempotency(tc, "POST", fmt.Sprintf("/api/v1/exams/%s/submit", examID), idempotencyKey, requestDigest)
+			if err != nil {
+				return err
+			}
+			if rec != nil {
+				if err := json.Unmarshal([]byte(rec.ResponseBody), &res); err != nil {
+					return err
+				}
+				isReplay = true
+				return nil
+			}
+		}
 		if err := core.CheckMaintenance(tc); err != nil {
 			return ErrMaintenance
 		}
@@ -852,35 +870,24 @@ func (s *Service) SubmitExam(
 			return ErrSessionClosed
 		}
 
-		// Check idempotency
-		if idempotencyKey != "" {
-			rec, err := core.CheckIdempotency(tc, "POST", fmt.Sprintf("/api/v1/exams/%s/submit", examID), idempotencyKey, requestDigest)
-			if errors.Is(err, core.ErrIdempotencyConflict) {
-				return err
-			}
-			if rec != nil {
-				var savedRes SubmitExamResponse
-				if err := json.Unmarshal([]byte(rec.ResponseBody), &savedRes); err == nil {
-					res = &savedRes
-					isReplay = true
-					return nil
-				}
-			}
-		}
-
 		// Precondition checks
-		if req.ExpectedRevision != currentRevision {
+		var deadlineAt sql.NullInt64
+		if err := tc.QueryRow("SELECT deadline_at FROM session WHERE id = ?", examID).Scan(&deadlineAt); err != nil {
+			return err
+		}
+		expired := deadlineAt.Valid && nowMicro >= deadlineAt.Int64
+		if !expired && req.ExpectedRevision != currentRevision {
 			return &RevisionConflictNotAcceptedError{
 				CurrentRevision: currentRevision,
 				LastAckSequence: lastAckSequence,
 			}
 		}
-		if req.LastAckSequence < lastAckSequence {
+		if !expired && req.LastAckSequence < lastAckSequence {
 			return fmt.Errorf("%w: unacknowledged events exist (client=%d, server=%d)", ErrPreconditionRequired, req.LastAckSequence, lastAckSequence)
 		}
 
 		// Settle exam
-		assessmentID, err := s.submitExamInternal(tc, examID, req.SubmissionID, false)
+		assessmentID, err := s.submitExamInternal(tc, examID, req.SubmissionID, expired)
 		if err != nil {
 			return err
 		}
@@ -939,18 +946,18 @@ func (s *Service) submitExamInternal(tc *core.TxnContext, examID string, submiss
 	defer rows.Close()
 
 	type ItemData struct {
-		InstID             string
-		Ordinal            int64
-		Snapshot           InstanceSnapshot
-		SelectedOptionID   sql.NullString
-		FirstOptionID      sql.NullString
-		RevisionCount      int
-		IsFirstReliable    int
-		FirstEventID       sql.NullString
-		FinalEventID       sql.NullString
-		IsCorrect          bool
-		FirstCorrect       *bool
-		ResponseHistory    string
+		InstID           string
+		Ordinal          int64
+		Snapshot         InstanceSnapshot
+		SelectedOptionID sql.NullString
+		FirstOptionID    sql.NullString
+		RevisionCount    int
+		IsFirstReliable  int
+		FirstEventID     sql.NullString
+		FinalEventID     sql.NullString
+		IsCorrect        bool
+		FirstCorrect     *bool
+		ResponseHistory  string
 	}
 
 	var items []ItemData
@@ -1167,6 +1174,9 @@ func (s *Service) AbandonExam(ctx context.Context, examID string, req AbandonExa
 		}
 
 		// Update to abandoned
+		if req.ExpectedRevision != currentRevision {
+			return &RevisionConflictNotAcceptedError{CurrentRevision: currentRevision}
+		}
 		if _, err := tc.Exec("UPDATE session SET status = 'abandoned', revision = revision + 1, updated_at = ? WHERE id = ?", nowMicro, examID); err != nil {
 			return fmt.Errorf("update session to abandoned: %w", err)
 		}

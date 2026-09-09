@@ -77,6 +77,19 @@ def run(context: dict) -> dict:
         f"Expected blocked_configuration in output, got: {p3.stderr}\n{p3.stdout}"
     )
 
+    # A valid configured profile alone must not authorize paid network activity.
+    guarded_profile = case_dir / "requires-explicit-paid-flag.json"
+    guarded_profile.write_text(json.dumps({
+        "enabled": True, "mode": "production",
+        "evaluator": {"base_url": "http://127.0.0.1:1", "model": "guard-probe",
+                      "api_key_env": "AVOCAB_GUARD_TEST_KEY"}
+    }))
+    guarded = subprocess.run(python_cmd + ["--profile", str(guarded_profile)], cwd=ROOT,
+                             env={**os.environ, "AVOCAB_GUARD_TEST_KEY": "local-test-only"},
+                             capture_output=True, text=True, timeout=5)
+    assert guarded.returncode == 2, guarded.stdout + guarded.stderr
+    assert "--allow-paid" in guarded.stderr, guarded.stderr
+
     # 4. Gate 4: Fixture app boots and runs without any LLM configured
     with managed_server(bin_path, data_dir, listen_port=0, seed="core", log_dir=case_dir) as server:
         artifacts.append(str(server.log_path))

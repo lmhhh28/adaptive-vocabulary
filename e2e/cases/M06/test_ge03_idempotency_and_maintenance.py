@@ -166,12 +166,13 @@ def run(context: dict) -> dict:
         # Submit candidate while in maintenance mode
         cand_maint_content = dict(cand_content)
         cand_maint_content["stem"] = "Maintenance candidate stem?"
+        maint_gen, maint_evals = worker.evaluated_reservations(item, 2)
         sub_maint = worker.submit_candidate(
             item["item_id"], item["fencing_token"], item["input_digest"],
             attempt_number=1, candidate_index=2,
             content=cand_maint_content,
-            generator_reservation_id=gen_res_id,
-            evaluator_reservation_ids=[eval1_res_id, eval2_res_id],
+            generator_reservation_id=maint_gen,
+            evaluator_reservation_ids=maint_evals,
             checks=cand_checks
         )
         assert sub_maint.status_code == 200, f"Submit during maintenance failed: {sub_maint.text}"

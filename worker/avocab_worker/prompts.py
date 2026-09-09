@@ -51,7 +51,7 @@ def build_evaluator_prompt(
         "Audit all parts: stem, options, and overall explanation. "
         "If the question or explanation contains contradictions, false statements about word meaning, or invalid distractors, rate the affected criterion as reject. "
         "Output JSON with: profile_version, model, prompt_version, ratings (object mapping criteria to 'pass', 'reject', or 'uncertain'), rationale. "
-        "Put 'ratings' first in the JSON object. Criteria to rate: target_meaning, naturalness, distractor_validity, unique_answer. "
+        "Put 'ratings' first in the JSON object. Rate every required criterion: target_meaning, grammar, naturalness, distractor_validity, unique_answer, explanation_consistency. "
         "Keep the rationale concise and under 60 words."
     )
 

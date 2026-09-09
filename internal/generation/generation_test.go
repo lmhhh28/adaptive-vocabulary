@@ -352,7 +352,7 @@ func TestCandidatePublishing(t *testing.T) {
 	// Generator reservation
 	genRes, _, err := svc.ReserveCall(ctx, ReserveRequest{
 		WorkerID: "worker-pub", ItemID: item.ItemID, FencingToken: item.FencingToken, InputDigest: item.InputDigest,
-		LogicalCallKey: LogicalCallKey{AttemptNumber: 1, Stage: "generator", CandidateIndex: 0},
+		LogicalCallKey:   LogicalCallKey{AttemptNumber: 1, Stage: "generator", CandidateIndex: 0},
 		NetworkAttemptID: core.NewUUID(), ProfileVersion: "v1", InputSHA256: "in1", InputTokenEstimate: 200, MaxOutputTokens: 200,
 	}, "", "", now)
 	if err != nil {
@@ -362,7 +362,7 @@ func TestCandidatePublishing(t *testing.T) {
 	// Evaluator 1 reservation
 	evalRes1, _, err := svc.ReserveCall(ctx, ReserveRequest{
 		WorkerID: "worker-pub", ItemID: item.ItemID, FencingToken: item.FencingToken, InputDigest: item.InputDigest,
-		LogicalCallKey: LogicalCallKey{AttemptNumber: 1, Stage: "evaluator", CandidateIndex: 0, EvaluationIndex: 1},
+		LogicalCallKey:   LogicalCallKey{AttemptNumber: 1, Stage: "evaluator", CandidateIndex: 0, EvaluationIndex: 1},
 		NetworkAttemptID: core.NewUUID(), ProfileVersion: "v1", InputSHA256: "in2", InputTokenEstimate: 200, MaxOutputTokens: 200,
 	}, "", "", now)
 	if err != nil {
@@ -372,11 +372,20 @@ func TestCandidatePublishing(t *testing.T) {
 	// Evaluator 2 reservation
 	evalRes2, _, err := svc.ReserveCall(ctx, ReserveRequest{
 		WorkerID: "worker-pub", ItemID: item.ItemID, FencingToken: item.FencingToken, InputDigest: item.InputDigest,
-		LogicalCallKey: LogicalCallKey{AttemptNumber: 1, Stage: "evaluator", CandidateIndex: 0, EvaluationIndex: 2},
+		LogicalCallKey:   LogicalCallKey{AttemptNumber: 1, Stage: "evaluator", CandidateIndex: 0, EvaluationIndex: 2},
 		NetworkAttemptID: core.NewUUID(), ProfileVersion: "v1", InputSHA256: "in3", InputTokenEstimate: 200, MaxOutputTokens: 200,
 	}, "", "", now)
 	if err != nil {
 		t.Fatalf("eval2 reserve: %v", err)
+	}
+	// Publication requires completed provider calls, not just authorization to call.
+	for _, reservationID := range []string{genRes.ReservationID, evalRes1.ReservationID, evalRes2.ReservationID} {
+		if _, err := svc.SettleCall(ctx, reservationID, SettleRequest{
+			WorkerID: "worker-pub", ItemID: item.ItemID, FencingToken: item.FencingToken,
+			InputDigest: item.InputDigest, Outcome: "response",
+		}, now); err != nil {
+			t.Fatalf("settle publication proof: %v", err)
+		}
 	}
 
 	candContent := CandidateContent{
@@ -402,13 +411,13 @@ func TestCandidatePublishing(t *testing.T) {
 
 	// Submit candidate with all pass
 	subResp, _, err := svc.SubmitCandidate(ctx, SubmitCandidateRequest{
-		WorkerID:          "worker-pub",
-		ItemID:            item.ItemID,
-		FencingToken:      item.FencingToken,
-		InputDigest:       item.InputDigest,
-		AttemptNumber:     1,
-		CandidateIndex:    0,
-		Content:           candContent,
+		WorkerID:       "worker-pub",
+		ItemID:         item.ItemID,
+		FencingToken:   item.FencingToken,
+		InputDigest:    item.InputDigest,
+		AttemptNumber:  1,
+		CandidateIndex: 0,
+		Content:        candContent,
 		GenerationMetadata: GenerationMetadata{
 			GeneratorReservationID:  genRes.ReservationID,
 			EvaluatorReservationIDs: []string{evalRes1.ReservationID, evalRes2.ReservationID},

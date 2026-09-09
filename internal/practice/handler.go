@@ -564,7 +564,10 @@ func (h *Handler) handleSubmitAttempt(w http.ResponseWriter, r *http.Request, se
 
 func (h *Handler) handleEndSession(w http.ResponseWriter, r *http.Request, sessionID string, defaultReason string) {
 	var req EndSessionRequest
-	_ = json.NewDecoder(r.Body).Decode(&req)
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		core.WriteJSONError(w, r, http.StatusBadRequest, "INVALID_REQUEST", "JSON 请求无效", nil)
+		return
+	}
 	if req.Reason == "" {
 		req.Reason = defaultReason
 	}
@@ -573,8 +576,22 @@ func (h *Handler) handleEndSession(w http.ResponseWriter, r *http.Request, sessi
 		return
 	}
 
-	res, err := h.service.EndSession(r.Context(), sessionID, req.ExpectedRevision, req.Reason)
+	body, _ := json.Marshal(req)
+	digest, _ := core.ComputeRequestDigest(body)
+	res, replayed, err := h.service.EndSessionIdempotent(r.Context(), sessionID, req.ExpectedRevision, req.Reason, r.URL.Path, r.Header.Get("Idempotency-Key"), digest)
 	if err != nil {
+		if errors.Is(err, core.ErrIdempotencyConflict) {
+			core.WriteJSONError(w, r, http.StatusConflict, "IDEMPOTENCY_CONFLICT", "幂等键请求摘要冲突", nil)
+			return
+		}
+		if errors.Is(err, ErrInvalidRequest) {
+			core.WriteJSONError(w, r, http.StatusBadRequest, "INVALID_REQUEST", "结束原因无效", nil)
+			return
+		}
+		if errors.Is(err, ErrMaintenance) {
+			core.WriteJSONError(w, r, http.StatusServiceUnavailable, "MAINTENANCE", "系统维护中", nil)
+			return
+		}
 		var revErr *RevisionConflictError
 		if errors.As(err, &revErr) {
 			details := map[string]any{
@@ -627,6 +644,9 @@ func (h *Handler) handleEndSession(w http.ResponseWriter, r *http.Request, sessi
 
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-store")
+	if replayed {
+		w.Header().Set("Idempotent-Replayed", "true")
+	}
 	w.WriteHeader(http.StatusOK)
 	_ = json.NewEncoder(w).Encode(resp)
 }

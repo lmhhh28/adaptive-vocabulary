@@ -29,19 +29,8 @@ def run(context: dict) -> dict:
 
     # 1. Audit traceability in quality benchmark report
     report_path = ROOT / "artifacts/quality-benchmark/report.json"
-    if not report_path.is_file():
-        # Run benchmark runner to generate report
-        import sys
-        worker_dir = str(ROOT / "worker")
-        if worker_dir not in sys.path:
-            sys.path.insert(0, worker_dir)
-        from avocab_worker.quality_benchmark import QualityBenchmark
-        benchmark = QualityBenchmark(allow_paid=True)
-        report = benchmark.run(max_workers=3)
-        report_path.parent.mkdir(parents=True, exist_ok=True)
-        report_path.write_text(json.dumps(report, indent=2, ensure_ascii=False), encoding="utf-8")
-    else:
-        report = json.loads(report_path.read_text(encoding="utf-8"))
+    assert report_path.is_file(), "Missing live benchmark evidence; run make quality-live explicitly before auditing M11"
+    report = json.loads(report_path.read_text(encoding="utf-8"))
 
     # Verify model and provider traceability
     provider_info = report["provider_info"]
@@ -182,6 +171,8 @@ def run(context: dict) -> dict:
         "status": "passed",
         "artifacts": artifacts,
         "details": {
+            "evidence_mode": "historical_live_report_and_local_ledger",
+            "live_calls_this_case": 0,
             "model": provider_info["model"],
             "base_url": provider_info["base_url"],
             "audited_calls": len(call_trace),
