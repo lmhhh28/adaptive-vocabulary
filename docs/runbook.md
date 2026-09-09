@@ -2,6 +2,8 @@
 
 本文档是 **Adaptive Vocabulary（自适应词汇题库系统）** 的完整个人使用与运维操作手册，覆盖从源码构建、首次初始化、日常学习/考试使用、词表导入、质量处置、投影维护、到全量数据备份与灾难恢复的全生命周期流程。
 
+前端开发请阅读[接口联调指南](frontend-api.md)和[接口字段参考](frontend-api-reference.md)，其中包含当前请求响应、重试规则及与冻结契约的差异。全部文档见[索引](README.md)。
+
 ---
 
 ## 一、 系统简介与设计理念
@@ -71,7 +73,7 @@ make run
 ### 3. 就绪信号与健康检查
 - 服务启动并在完成数据库迁移与过期考试清理后，会在终端 `stdout` 输出单行 JSON 就绪信号：
   ```json
-  {"ready":true,"base_url":"http://127.0.0.1:8080","pid":12345,"schema_version":80,"contract_version":"1.1.0",...}
+  {"ready":true,"base_url":"http://127.0.0.1:8080","pid":12345,"schema_version":80,"contract_version":"1.1.0"}
   ```
 - 访问健康检查端点：
   ```sh
