@@ -1,0 +1,12 @@
+{
+  "profile_version": "v1",
+  "model": "test-evaluator",
+  "prompt_version": "v1",
+  "ratings": {
+    "target_meaning": "pass",
+    "naturalness": "pass",
+    "distractor_validity": "reject",
+    "unique_answer": "reject"
+  },
+  "rationale": "Distractor B is too close to correct meaning; unique answer not guaranteed."
+}

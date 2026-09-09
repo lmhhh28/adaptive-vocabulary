@@ -1,0 +1,27 @@
+{
+  "task_family": "meaning_recognition",
+  "stem": "What is the primary meaning of the word?",
+  "options": [
+    {
+      "text": "测试释义A（正确）",
+      "is_correct": true,
+      "explanation": "匹配目标词义"
+    },
+    {
+      "text": "测试干扰项B",
+      "is_correct": false,
+      "explanation": "无关词义"
+    },
+    {
+      "text": "测试干扰项C",
+      "is_correct": false,
+      "explanation": "无关词义"
+    },
+    {
+      "text": "测试干扰项D",
+      "is_correct": false,
+      "explanation": "无关词义"
+    }
+  ],
+  "explanation": "正确答案是A，符合给定的目标释义。"
+}

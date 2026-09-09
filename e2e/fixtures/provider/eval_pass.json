@@ -1,0 +1,12 @@
+{
+  "profile_version": "v1",
+  "model": "test-evaluator",
+  "prompt_version": "v1",
+  "ratings": {
+    "target_meaning": "pass",
+    "naturalness": "pass",
+    "distractor_validity": "pass",
+    "unique_answer": "pass"
+  },
+  "rationale": "All criteria met: target meaning accurate, distractors distinct and non-overlapping, unique answer."
+}

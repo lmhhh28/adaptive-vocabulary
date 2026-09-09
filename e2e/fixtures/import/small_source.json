@@ -1,0 +1,48 @@
+{
+  "source": {
+    "id": "small-fixture-source-v1",
+    "name": "小型海事词汇来源",
+    "location": "fixtures/import/small_source.json",
+    "source_version": "1.0.0",
+    "license": "MIT",
+    "usage_scope": "Testing M05 importer acceptance",
+    "checksum": "sha256-small-fixture-12345"
+  },
+  "entries": [
+    {
+      "external_entry_id": "maritime-001",
+      "raw_word": "harbor",
+      "raw_translation": "海港",
+      "pos": "n.",
+      "tags": "maritime,cet6"
+    },
+    {
+      "external_entry_id": "maritime-002",
+      "raw_word": "anchor",
+      "raw_translation": "锚",
+      "pos": "n.",
+      "tags": "maritime"
+    },
+    {
+      "external_entry_id": "maritime-003",
+      "raw_word": "beacon",
+      "raw_translation": "灯塔",
+      "pos": "n.",
+      "tags": "maritime"
+    },
+    {
+      "external_entry_id": "maritime-004",
+      "raw_word": "cargo",
+      "raw_translation": "货物",
+      "pos": "n.",
+      "tags": "trade"
+    },
+    {
+      "external_entry_id": "maritime-005",
+      "raw_word": "vessel",
+      "raw_translation": "船只; 血管",
+      "pos": "n.",
+      "tags": "polysemy"
+    }
+  ]
+}

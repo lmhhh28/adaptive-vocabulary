@@ -1,0 +1,27 @@
+{
+  "task_family": "meaning_recognition",
+  "stem": "What is the primary meaning of the word?",
+  "options": [
+    {
+      "text": "测试释义A（含歧义）",
+      "is_correct": true,
+      "explanation": "释义有争议"
+    },
+    {
+      "text": "测试近义干扰项B",
+      "is_correct": false,
+      "explanation": "过于接近正确释义"
+    },
+    {
+      "text": "测试干扰项C",
+      "is_correct": false,
+      "explanation": "无关词义"
+    },
+    {
+      "text": "测试干扰项D",
+      "is_correct": false,
+      "explanation": "无关词义"
+    }
+  ],
+  "explanation": "待修订的候选题目。"
+}

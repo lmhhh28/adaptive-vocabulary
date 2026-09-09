@@ -1,0 +1,27 @@
+{
+  "task_family": "meaning_recognition",
+  "stem": "What is the primary meaning of the word?",
+  "options": [
+    {
+      "text": "测试精确释义A（正确）",
+      "is_correct": true,
+      "explanation": "明确匹配目标词义"
+    },
+    {
+      "text": "测试明确相异干扰项B",
+      "is_correct": false,
+      "explanation": "无歧义反面项"
+    },
+    {
+      "text": "测试干扰项C",
+      "is_correct": false,
+      "explanation": "无关词义"
+    },
+    {
+      "text": "测试干扰项D",
+      "is_correct": false,
+      "explanation": "无关词义"
+    }
+  ],
+  "explanation": "修订后的清晰四选题。"
+}

@@ -1,0 +1,77 @@
+{
+  "description": "Trace fixture verifying normal practice, correction retry progression, early review, and projection replay",
+  "seed": "core",
+  "policy": "config/policy-v2.json",
+  "steps": [
+    {
+      "step": 1,
+      "kind": "session",
+      "session_id": "sess_trace_01",
+      "session_kind": "practice",
+      "status": "open",
+      "created_at": 1725786000000000
+    },
+    {
+      "step": 2,
+      "kind": "reserve",
+      "session_id": "sess_trace_01",
+      "instance_id": "inst_trace_01",
+      "ordinal": 0,
+      "normal_position": 1,
+      "question_version_id": "00000000-0000-4000-8000-000000000301",
+      "sense_id": "00000000-0000-4000-8000-000000000101",
+      "lexeme_id": "00000000-0000-4000-8000-000000000001",
+      "form_id": "00000000-0000-4000-8000-000000000501",
+      "observed_at": 1725786000000000
+    },
+    {
+      "step": 3,
+      "kind": "attempt",
+      "attempt": {
+        "id": "att_trace_01",
+        "instance_id": "inst_trace_01",
+        "session_id": "sess_trace_01",
+        "sense_id": "00000000-0000-4000-8000-000000000101",
+        "task_family": "meaning_recognition",
+        "source": "practice",
+        "purpose": "normal",
+        "response_history": "single_response",
+        "selected_option_id": "00000000-0000-4000-8000-000000002001",
+        "grading_version": "grading-v1",
+        "is_correct": false,
+        "observed_at": 1725786005000000
+      }
+    },
+    {
+      "step": 4,
+      "kind": "reserve",
+      "session_id": "sess_trace_01",
+      "instance_id": "inst_trace_02",
+      "ordinal": 1,
+      "normal_position": 2,
+      "question_version_id": "00000000-0000-4000-8000-000000000302",
+      "sense_id": "00000000-0000-4000-8000-000000000102",
+      "lexeme_id": "00000000-0000-4000-8000-000000000002",
+      "form_id": "00000000-0000-4000-8000-000000000502",
+      "observed_at": 1725786060000000
+    },
+    {
+      "step": 5,
+      "kind": "attempt",
+      "attempt": {
+        "id": "att_trace_02",
+        "instance_id": "inst_trace_02",
+        "session_id": "sess_trace_01",
+        "sense_id": "00000000-0000-4000-8000-000000000102",
+        "task_family": "meaning_recognition",
+        "source": "practice",
+        "purpose": "early_review",
+        "response_history": "single_response",
+        "selected_option_id": "00000000-0000-4000-8000-000000002005",
+        "grading_version": "grading-v1",
+        "is_correct": true,
+        "observed_at": 1725786065000000
+      }
+    }
+  ]
+}
