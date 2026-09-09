@@ -1,0 +1,319 @@
+package importer
+
+import (
+	"context"
+	"database/sql"
+	"errors"
+	"strings"
+	"testing"
+
+	_ "modernc.org/sqlite"
+
+	"adaptive-vocabulary/internal/bank"
+	"adaptive-vocabulary/internal/content"
+	"adaptive-vocabulary/internal/core"
+)
+
+func setupTestDB(t *testing.T) *sql.DB {
+	t.Helper()
+	db, err := sql.Open("sqlite", ":memory:")
+	if err != nil {
+		t.Fatalf("open in-memory db: %v", err)
+	}
+
+	// Enable WAL & pragmas
+	_, _ = db.Exec("PRAGMA foreign_keys = ON")
+
+	_, err = core.RunMigrations(db)
+	if err != nil {
+		t.Fatalf("run migrations: %v", err)
+	}
+
+	err = content.ApplySeed(context.Background(), db, "core")
+	if err != nil {
+		t.Fatalf("apply seed core: %v", err)
+	}
+
+	return db
+}
+
+func TestParseTXT(t *testing.T) {
+	txt := "\n  river  \n\nforest\n  mountain\n"
+	entries, err := ParseRawInput([]byte(txt), "test.txt")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(entries) != 3 {
+		t.Fatalf("expected 3 entries, got %d", len(entries))
+	}
+	if entries[0].NormalizedWord != "river" || entries[1].NormalizedWord != "forest" || entries[2].NormalizedWord != "mountain" {
+		t.Fatalf("unexpected normalized words: %+v", entries)
+	}
+}
+
+func TestParseCSV(t *testing.T) {
+	csv := "word,sense_id\nriver,00000000-0000-4000-8000-000000000101\ndesert,\n"
+	entries, err := ParseRawInput([]byte(csv), "test.csv")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(entries) != 2 {
+		t.Fatalf("expected 2 entries, got %d", len(entries))
+	}
+	if entries[0].NormalizedWord != "river" || entries[0].SpecifiedSenseID == nil || *entries[0].SpecifiedSenseID != "00000000-0000-4000-8000-000000000101" {
+		t.Fatalf("unexpected entry 0: %+v", entries[0])
+	}
+	if entries[1].NormalizedWord != "desert" || entries[1].SpecifiedSenseID != nil {
+		t.Fatalf("unexpected entry 1: %+v", entries[1])
+	}
+}
+
+func TestBankVocabularyImportAndResolution(t *testing.T) {
+	db := setupTestDB(t)
+	defer db.Close()
+
+	ctx := context.Background()
+	bankSvc := bank.NewService(db)
+	newBank, err := bankSvc.CreateBank(ctx, "Import Test Bank", "Testing M05")
+	if err != nil {
+		t.Fatalf("create bank: %v", err)
+	}
+
+	importerSvc := NewService(db)
+
+	// In core seed, "river", "desert", "stream" exist in lexeme and sense.
+	// "unknownxyz" does not exist.
+	wordsInput := []string{
+		"river",
+		"desert",
+		"unknownxyz",
+		"   ", // empty, should be filtered or ignored
+	}
+	parsed, err := ParseWordSlice(wordsInput)
+	if err != nil {
+		t.Fatalf("parse word slice: %v", err)
+	}
+
+	job, err := importerSvc.ImportBankVocabulary(ctx, newBank.ID, parsed, "v1", newBank.Revision, "idemp-key-1", "digest-1")
+	if err != nil {
+		t.Fatalf("import bank vocabulary: %v", err)
+	}
+
+	if job.TotalCount != 3 {
+		t.Fatalf("expected total 3, got %d", job.TotalCount)
+	}
+	if job.NotFoundCount != 1 {
+		t.Fatalf("expected 1 not_found, got %d", job.NotFoundCount)
+	}
+
+	// Check items list
+	itemsResp, err := importerSvc.GetImportItems(ctx, job.ID, "", 50, 0)
+	if err != nil {
+		t.Fatalf("get import items: %v", err)
+	}
+	if len(itemsResp.Items) != 3 {
+		t.Fatalf("expected 3 items, got %d", len(itemsResp.Items))
+	}
+
+	// Idempotency re-call
+	job2, err := importerSvc.ImportBankVocabulary(ctx, newBank.ID, parsed, "v1", newBank.Revision, "idemp-key-1", "digest-1")
+	if err != nil {
+		t.Fatalf("idempotent replay failed: %v", err)
+	}
+	if job2.ID != job.ID {
+		t.Fatalf("expected same job ID on replay")
+	}
+}
+
+func TestResolveItem(t *testing.T) {
+	db := setupTestDB(t)
+	defer db.Close()
+
+	ctx := context.Background()
+	bankSvc := bank.NewService(db)
+	newBank, err := bankSvc.CreateBank(ctx, "Resolve Bank", "")
+	if err != nil {
+		t.Fatalf("create bank: %v", err)
+	}
+
+	importerSvc := NewService(db)
+
+	// In core seed, "bank" has 2 senses (financial bank and river bank)
+	parsed, err := ParseWordSlice([]string{"bank"})
+	if err != nil {
+		t.Fatalf("parse word slice: %v", err)
+	}
+	job, err := importerSvc.ImportBankVocabulary(ctx, newBank.ID, parsed, "v1", -1, "", "")
+	if err != nil {
+		t.Fatalf("import vocabulary: %v", err)
+	}
+
+	if job.AmbiguousCount != 1 {
+		t.Fatalf("expected 1 ambiguous, got %d", job.AmbiguousCount)
+	}
+
+	itemsResp, err := importerSvc.GetImportItems(ctx, job.ID, "ambiguous", 10, 0)
+	if err != nil || len(itemsResp.Items) != 1 {
+		t.Fatalf("expected 1 ambiguous item, got %d, err: %v", len(itemsResp.Items), err)
+	}
+	item := itemsResp.Items[0]
+	if len(item.Candidates) < 2 {
+		t.Fatalf("expected at least 2 candidates, got %d", len(item.Candidates))
+	}
+
+	s1 := item.Candidates[0].SenseID
+
+	// CAS conflict check
+	_, err = importerSvc.ResolveImportItem(ctx, item.ID, ResolveItemRequest{
+		Action:           "adopt",
+		SenseRefs:        []string{s1},
+		Reason:           "Adopt financial bank",
+		ExpectedRevision: 999, // wrong revision
+	}, "", "")
+	if !errors.Is(err, ErrRevisionConflict) {
+		t.Fatalf("expected ErrRevisionConflict, got %v", err)
+	}
+
+	// Correct resolve: adopt s1
+	updated, err := importerSvc.ResolveImportItem(ctx, item.ID, ResolveItemRequest{
+		Action:           "adopt",
+		SenseRefs:        []string{s1},
+		Reason:           "Adopt financial bank",
+		ExpectedRevision: item.Revision,
+	}, "resolve-key-1", "digest-res-1")
+	if err != nil {
+		t.Fatalf("resolve adopt error: %v", err)
+	}
+	if updated.Status != "resolved" {
+		t.Fatalf("expected resolved, got %s", updated.Status)
+	}
+
+	// Check bank members
+	bankDetail, err := bankSvc.GetBank(ctx, newBank.ID)
+	if err != nil {
+		t.Fatalf("get bank detail: %v", err)
+	}
+	if bankDetail.MemberCount != 1 {
+		t.Fatalf("expected 1 member in bank, got %d", bankDetail.MemberCount)
+	}
+}
+
+func TestResolveItemExclude(t *testing.T) {
+	db := setupTestDB(t)
+	defer db.Close()
+
+	ctx := context.Background()
+	bankSvc := bank.NewService(db)
+	newBank, err := bankSvc.CreateBank(ctx, "Exclude Bank", "")
+	if err != nil {
+		t.Fatalf("create bank: %v", err)
+	}
+
+	importerSvc := NewService(db)
+	parsed, err := ParseWordSlice([]string{"bank"})
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+
+	job, err := importerSvc.ImportBankVocabulary(ctx, newBank.ID, parsed, "v1", -1, "", "")
+	if err != nil {
+		t.Fatalf("import: %v", err)
+	}
+
+	itemsResp, err := importerSvc.GetImportItems(ctx, job.ID, "ambiguous", 10, 0)
+	if err != nil || len(itemsResp.Items) != 1 {
+		t.Fatalf("expected 1 ambiguous item, got %d", len(itemsResp.Items))
+	}
+	item := itemsResp.Items[0]
+
+	// Exclude
+	updated, err := importerSvc.ResolveImportItem(ctx, item.ID, ResolveItemRequest{
+		Action:           "exclude",
+		Reason:           "Not relevant for current study",
+		ExpectedRevision: item.Revision,
+	}, "", "")
+	if err != nil {
+		t.Fatalf("resolve exclude error: %v", err)
+	}
+	if updated.Status != "excluded" {
+		t.Fatalf("expected excluded status, got %s", updated.Status)
+	}
+
+	// Verify bank still has 0 members
+	bDetail, _ := bankSvc.GetBank(ctx, newBank.ID)
+	if bDetail.MemberCount != 0 {
+		t.Fatalf("expected 0 members, got %d", bDetail.MemberCount)
+	}
+}
+
+func TestSourceImport(t *testing.T) {
+	db := setupTestDB(t)
+	defer db.Close()
+
+	ctx := context.Background()
+	importerSvc := NewService(db)
+
+	pos := "n."
+	tag := "cet6"
+	req := SourceImportRequest{
+		SourceVersion: "1.0.0",
+		Entries: []SourceEntryInput{
+			{
+				ExternalEntryID: "entry-101",
+				RawWord:         "ocean",
+				RawTranslation: "海洋",
+				POS:             &pos,
+				Tags:            &tag,
+			},
+			{
+				ExternalEntryID: "entry-102",
+				RawWord:         "stream",
+				RawTranslation: "小溪",
+				POS:             &pos,
+			},
+		},
+		ExpectedRevision: 0,
+	}
+
+	job, err := importerSvc.ImportSourceEntries(ctx, "project-authored-fixture-v1", req, "src-idemp-1", "src-digest-1")
+	if err != nil {
+		t.Fatalf("import source entries: %v", err)
+	}
+	if job.TotalCount != 2 {
+		t.Fatalf("expected 2 total entries, got %d", job.TotalCount)
+	}
+
+	// Verify source_entry table has ocean
+	var c int
+	_ = db.QueryRow("SELECT COUNT(*) FROM source_entry WHERE external_entry_id = 'entry-101'").Scan(&c)
+	if c != 1 {
+		t.Fatalf("expected source_entry entry-101 to exist")
+	}
+
+	// Verify sense was created for ocean
+	var senseCount int
+	_ = db.QueryRow(`
+		SELECT COUNT(*) FROM sense s
+		JOIN lexeme l ON l.id = s.lexeme_id
+		WHERE l.canonical_form = 'ocean'
+	`).Scan(&senseCount)
+	if senseCount != 1 {
+		t.Fatalf("expected 1 sense for ocean, got %d", senseCount)
+	}
+}
+
+func TestParseConstraints(t *testing.T) {
+	// Over 2 MiB file
+	largeData := []byte(strings.Repeat("a\n", 2*1024*1024+10))
+	_, err := ParseRawInput(largeData, "large.txt")
+	if !errors.Is(err, ErrFileTooLarge) {
+		t.Fatalf("expected ErrFileTooLarge, got %v", err)
+	}
+
+	// Over 5000 rows
+	rowsData := []byte(strings.Repeat("word\n", 5001))
+	_, err = ParseRawInput(rowsData, "rows.txt")
+	if !errors.Is(err, ErrTooManyRows) {
+		t.Fatalf("expected ErrTooManyRows, got %v", err)
+	}
+}

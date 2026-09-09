@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Adaptive Vocabulary</title>
+  <style>
+    :root {
+      --bg: #f8fafc;
+      --card-bg: #ffffff;
+      --text: #0f172a;
+      --text-muted: #64748b;
+      --border: #e2e8f0;
+      --primary: #2563eb;
+    }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      background-color: var(--bg);
+      color: var(--text);
+      margin: 0;
+      padding: 2rem;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 100vh;
+      box-sizing: border-box;
+    }
+    .card {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 2rem;
+      max-width: 560px;
+      width: 100%;
+      box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.05);
+    }
+    h1 {
+      font-size: 1.5rem;
+      margin-top: 0;
+      margin-bottom: 0.5rem;
+    }
+    p {
+      color: var(--text-muted);
+      line-height: 1.5;
+    }
+    .status-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.25rem 0.75rem;
+      border-radius: 9999px;
+      background: #ecfdf5;
+      color: #065f46;
+      font-size: 0.875rem;
+      font-weight: 500;
+      margin-bottom: 1.5rem;
+    }
+    .status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #10b981;
+    }
+    .info-list {
+      border-top: 1px solid var(--border);
+      padding-top: 1rem;
+      margin-top: 1rem;
+    }
+    .info-item {
+      display: flex;
+      justify-content: space-between;
+      padding: 0.5rem 0;
+      font-size: 0.875rem;
+    }
+    .info-label {
+      color: var(--text-muted);
+    }
+    .info-value {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      font-weight: 600;
+    }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="status-badge">
+      <span class="status-dot"></span>
+      <span id="system-status">服务运行就绪</span>
+    </div>
+    <h1 id="app-title">Adaptive Vocabulary</h1>
+    <p>自适应词汇题库系统运行底座（M00）已启动。</p>
+    <div class="info-list">
+      <div class="info-item">
+        <span class="info-label">契约版本</span>
+        <span class="info-value" id="contract-version">{{.ContractVersion}}</span>
+      </div>
+      <div class="info-item">
+        <span class="info-label">Schema 版本</span>
+        <span class="info-value" id="schema-version">{{.SchemaVersion}}</span>
+      </div>
+      <div class="info-item">
+        <span class="info-label">SQLite 版本</span>
+        <span class="info-value" id="sqlite-version">{{.SQLiteVersion}}</span>
+      </div>
+      <div class="info-item">
+        <span class="info-label">运行模式</span>
+        <span class="info-value" id="runtime-mode">{{.Mode}}</span>
+      </div>
+    </div>
+  </div>
+  <script type="module">
+    // Auto-fetch client context to acquire local CSRF token
+    fetch('/client-context')
+      .then(res => res.json())
+      .then(data => {
+        window.csrfToken = data.csrf_token;
+      })
+      .catch(err => console.error('Failed to initialize client context:', err));
+  </script>
+</body>
+</html>
