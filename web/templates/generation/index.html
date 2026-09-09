@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>生成与质检管理 - Adaptive Vocabulary</title>
+    <link rel="stylesheet" href="/static/generation/style.css">
+</head>
+<body>
+    <header class="app-header">
+        <div class="header-container">
+            <h1 class="logo"><a href="/">Adaptive Vocabulary</a></h1>
+            <nav class="nav-links">
+                <a href="/" class="nav-link">首页</a>
+                <a href="/banks" class="nav-link">题库</a>
+                <a href="/practice" class="nav-link">自适应练习</a>
+                <a href="/exams/new" class="nav-link">阶段考试</a>
+                <a href="/imports" class="nav-link">词表导入</a>
+                <a href="/generation" class="nav-link active">内容生成</a>
+                <a href="/quality" class="nav-link">质量与维护</a>
+            </nav>
+        </div>
+    </header>
+
+    <main class="main-container">
+        <div class="page-title-row">
+            <h2>生成任务与预算账本 (M06)</h2>
+        </div>
+
+        <section class="generation-section">
+            <h3>离线生成任务列表</h3>
+            <div class="jobs-list" id="jobs-list">
+                {{range .Jobs}}
+                <div class="job-card" data-job-id="{{.ID}}">
+                    <div class="job-card-header">
+                        <span class="job-bank-name">题库: {{.BankName}}</span>
+                        <span class="badge badge-status-{{.Status}}">{{.Status}}</span>
+                    </div>
+                    <div class="job-meta">
+                        <p><strong>Job ID:</strong> <code>{{.ID}}</code></p>
+                        <p><strong>创建时间:</strong> {{.CreatedAtStr}}</p>
+                    </div>
+                    <div class="job-stats-grid">
+                        <div class="stat-box">
+                            <span class="stat-num">{{.Requested}}</span>
+                            <span class="stat-desc">请求题目</span>
+                        </div>
+                        <div class="stat-box">
+                            <span class="stat-num">{{.Published}}</span>
+                            <span class="stat-desc">已发布</span>
+                        </div>
+                        <div class="stat-box">
+                            <span class="stat-num">{{.Rejected}}</span>
+                            <span class="stat-desc">已拒绝</span>
+                        </div>
+                        <div class="stat-box">
+                            <span class="stat-num">{{.Pending}}</span>
+                            <span class="stat-desc">待处理项</span>
+                        </div>
+                    </div>
+                    <div class="budget-section">
+                        <h4>持久调用预算账本 (10 R02)</h4>
+                        <div class="budget-row">
+                            <span>授权网络调用数:</span>
+                            <span><strong>{{.AuthorizedRequests}}</strong> / {{.MaxRequests}}</span>
+                        </div>
+                        <div class="budget-row">
+                            <span>Token 占用 (已知+预留):</span>
+                            <span><strong>{{.TotalTokens}}</strong> / {{.MaxTokens}}</span>
+                        </div>
+                        {{if .BudgetOverrun}}
+                        <div class="alert-overrun">
+                            ⚠️ 实际消耗超出预留，已标记 budget_overrun，终止后续新增授权。
+                        </div>
+                        {{end}}
+                    </div>
+                </div>
+                {{else}}
+                <div class="empty-state">
+                    <p>暂无生成任务。可通过题库管理提交新的词义生成作业。</p>
+                </div>
+                {{end}}
+            </div>
+        </section>
+    </main>
+</body>
+</html>

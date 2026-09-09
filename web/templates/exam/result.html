@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>考试报告 - Adaptive Vocabulary</title>
+    <link rel="stylesheet" href="/static/content/content.css">
+    <link rel="stylesheet" href="/static/exam/exam.css">
+</head>
+<body>
+    <header class="app-header">
+        <div class="header-container">
+            <h1 class="logo"><a href="/">Adaptive Vocabulary</a></h1>
+            <nav class="nav-links">
+                <a href="/" class="nav-link">首页</a>
+                <a href="/banks" class="nav-link">题库</a>
+                <a href="/practice" class="nav-link">自适应练习</a>
+                <a href="/exams/new" class="nav-link active">阶段考试</a>
+                <a href="/imports" class="nav-link">词表导入</a>
+                <a href="/generation" class="nav-link">内容生成</a>
+                <a href="/quality" class="nav-link">质量与维护</a>
+            </nav>
+        </div>
+    </header>
+
+    <main class="main-container" id="exam-result-app" data-exam-id="{{.ExamID}}">
+        <!-- Status banner -->
+        <div id="status-banner" class="alert-banner hidden"></div>
+
+        <section class="exam-result-card" id="result-view">
+            <h2>考试评测报告</h2>
+            <div class="score-overview" id="score-overview">
+                <div class="score-stat-card">
+                    <span class="stat-num" id="stat-ratio">--%</span>
+                    <span class="stat-label">正确率</span>
+                </div>
+                <div class="score-stat-card">
+                    <span class="stat-num" id="stat-correct">0</span>
+                    <span class="stat-label">答对题数</span>
+                </div>
+                <div class="score-stat-card">
+                    <span class="stat-num" id="stat-total">0</span>
+                    <span class="stat-label">总题数</span>
+                </div>
+                <div class="score-stat-card">
+                    <span class="stat-num" id="stat-omitted">0</span>
+                    <span class="stat-label">未作答</span>
+                </div>
+            </div>
+
+            <div class="behavior-analysis-card" id="behavior-analysis">
+                <h3>作答行为特征分析</h3>
+                <div class="analysis-grid">
+                    <div class="analysis-item">
+                        <span class="label">首次选择正确率：</span>
+                        <span class="val" id="first-choice-accuracy">--</span>
+                    </div>
+                    <div class="analysis-item">
+                        <span class="label">改答转为正确：</span>
+                        <span class="val" id="revised-to-correct">0 次</span>
+                    </div>
+                    <div class="analysis-item">
+                        <span class="label">改答转为错误：</span>
+                        <span class="val" id="revised-to-incorrect">0 次</span>
+                    </div>
+                </div>
+            </div>
+
+            <h3 class="mt-4">题目与解析详情</h3>
+            <div class="result-questions-list" id="questions-review-list">
+                <!-- Populated dynamically -->
+            </div>
+
+            <div class="result-footer-actions">
+                <a href="/exams/new" class="btn btn-primary">再考一次</a>
+                <a href="/practice" class="btn btn-secondary">前往强化练习</a>
+                <a href="/banks" class="btn btn-secondary">返回题库</a>
+            </div>
+        </section>
+    </main>
+
+    <script type="module" src="/static/exam/exam.js"></script>
+</body>
+</html>

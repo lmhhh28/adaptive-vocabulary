@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>导入词表 - {{.BankName}} - Adaptive Vocabulary</title>
+    <link rel="stylesheet" href="/static/content/content.css">
+    <link rel="stylesheet" href="/static/import/import.css">
+</head>
+<body>
+    <header class="app-header">
+        <div class="header-container">
+            <h1 class="logo"><a href="/">Adaptive Vocabulary</a></h1>
+            <nav class="nav-links">
+                <a href="/" class="nav-link">首页</a>
+                <a href="/banks" class="nav-link">题库</a>
+                <a href="/practice" class="nav-link">自适应练习</a>
+                <a href="/exams/new" class="nav-link">阶段考试</a>
+                <a href="/imports" class="nav-link active">词表导入</a>
+                <a href="/generation" class="nav-link">内容生成</a>
+                <a href="/quality" class="nav-link">质量与维护</a>
+            </nav>
+        </div>
+    </header>
+
+    <main class="main-container">
+        <div class="breadcrumb">
+            <a href="/banks/{{.BankID}}">&larr; 返回题库详情</a>
+        </div>
+
+        <section class="card" id="import-upload-card" data-bank-id="{{.BankID}}">
+            <h2>导入词表到题库: <span id="bank-name-label">{{.BankName}}</span></h2>
+            <p class="text-muted">支持上传 UTF-8 编码的 TXT 文件（一行一个词）或 CSV 文件（word,sense_id），也可直接在下方文本框中粘贴单词列表。</p>
+
+            <div id="status-banner" class="alert-banner hidden"></div>
+
+            <form id="import-form" class="import-form">
+                <div class="form-group">
+                    <label for="import-file">上传词表文件 (TXT 或 CSV，最大 2MB):</label>
+                    <input type="file" id="import-file" name="file" accept=".txt,.csv" class="form-control-file">
+                </div>
+
+                <div class="form-divider"><span>或者直接粘贴单词</span></div>
+
+                <div class="form-group">
+                    <label for="import-text">单词列表 (每行一个):</label>
+                    <textarea id="import-text" name="text" rows="8" class="form-control" placeholder="river&#10;desert&#10;mountain"></textarea>
+                </div>
+
+                <div class="form-actions">
+                    <button type="submit" id="btn-submit-import" class="btn btn-primary">开始导入解析</button>
+                </div>
+            </form>
+        </section>
+    </main>
+
+    <script src="/static/import/import.js"></script>
+</body>
+</html>

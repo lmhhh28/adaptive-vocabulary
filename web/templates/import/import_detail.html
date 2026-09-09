@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>导入详情与消歧 - Adaptive Vocabulary</title>
+    <link rel="stylesheet" href="/static/content/content.css">
+    <link rel="stylesheet" href="/static/import/import.css">
+</head>
+<body>
+    <header class="app-header">
+        <div class="header-container">
+            <h1 class="logo"><a href="/">Adaptive Vocabulary</a></h1>
+            <nav class="nav-links">
+                <a href="/" class="nav-link">首页</a>
+                <a href="/banks" class="nav-link">题库</a>
+                <a href="/practice" class="nav-link">自适应练习</a>
+                <a href="/exams/new" class="nav-link">阶段考试</a>
+                <a href="/imports" class="nav-link active">词表导入</a>
+                <a href="/generation" class="nav-link">内容生成</a>
+                <a href="/quality" class="nav-link">质量与维护</a>
+            </nav>
+        </div>
+    </header>
+
+    <main class="main-container" id="import-detail-app" data-import-id="{{.ImportID}}">
+        <div class="breadcrumb">
+            <a href="/banks">&larr; 返回题库列表</a>
+        </div>
+
+        <section class="card import-summary-card">
+            <h2>词表导入任务看板</h2>
+            <p class="meta-info">任务 ID: <code id="import-id-label">{{.ImportID}}</code></p>
+            <div id="status-banner" class="alert-banner hidden"></div>
+
+            <div class="stats-bar" id="stats-bar">
+                <div class="stat-pill stat-total">总数: <span id="stat-total-val">-</span></div>
+                <div class="stat-pill stat-resolved">已采纳: <span id="stat-resolved-val">-</span></div>
+                <div class="stat-pill stat-ambiguous">多义待消歧: <span id="stat-ambiguous-val">-</span></div>
+                <div class="stat-pill stat-not-found">未匹配: <span id="stat-not-found-val">-</span></div>
+                <div class="stat-pill stat-invalid">格式无效: <span id="stat-invalid-val">-</span></div>
+                <div class="stat-pill stat-excluded">已排除: <span id="stat-excluded-val">-</span></div>
+            </div>
+        </section>
+
+        <section class="card items-view-card">
+            <div class="filter-controls">
+                <label>状态筛选:</label>
+                <button class="filter-btn active" data-status="">全部</button>
+                <button class="filter-btn" data-status="ambiguous">多义待消歧</button>
+                <button class="filter-btn" data-status="resolved">已采纳</button>
+                <button class="filter-btn" data-status="not_found">未匹配</button>
+                <button class="filter-btn" data-status="invalid">无效</button>
+                <button class="filter-btn" data-status="excluded">已排除</button>
+            </div>
+
+            <div id="items-container" class="items-list">
+                <p class="loading-text">正在加载导入条目...</p>
+            </div>
+        </section>
+    </main>
+
+    <script src="/static/import/import.js"></script>
+</body>
+</html>

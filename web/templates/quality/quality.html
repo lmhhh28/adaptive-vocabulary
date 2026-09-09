@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>质量与维护控制台 - Adaptive Vocabulary</title>
+  <link rel="stylesheet" href="/static/quality/quality.css">
+</head>
+<body>
+  <div class="container">
+    <header class="header">
+      <div class="title-area">
+        <h1>质量与维护控制台 (M08)</h1>
+        <p class="subtitle">内容错误处置、重建恢复与报告修订审计</p>
+      </div>
+      <div class="nav-links">
+        <a href="/" class="nav-link">首页</a>
+        <a href="/banks" class="nav-link">题库</a>
+        <a href="/practice" class="nav-link">自适应练习</a>
+        <a href="/exams/new" class="nav-link">阶段考试</a>
+        <a href="/imports" class="nav-link">词表导入</a>
+        <a href="/generation" class="nav-link">内容生成</a>
+        <a href="/quality" class="nav-link active">质量与维护</a>
+      </div>
+    </header>
+
+    <!-- Maintenance status card -->
+    <section class="card status-card">
+      <h2>系统维护状态</h2>
+      <div class="status-grid">
+        <div class="status-item">
+          <span class="label">运行模式:</span>
+          <span class="value mode-tag mode-{{.Maintenance.Mode}}" id="system-mode">{{.Maintenance.Mode}}</span>
+        </div>
+        <div class="status-item">
+          <span class="label">活动投影版本:</span>
+          <span class="value monospace" id="active-version">{{.Maintenance.ActiveVersion}}</span>
+        </div>
+        <div class="status-item">
+          <span class="label">需要重建:</span>
+          <span class="value" id="requires-rebuild">{{if .Maintenance.RequiresRebuild}}是 (待重建){{else}}否 (一致){{end}}</span>
+        </div>
+        {{if .Maintenance.RunStatus}}
+        <div class="status-item">
+          <span class="label">最后重建状态:</span>
+          <span class="value" id="run-status">{{.Maintenance.RunStatus}}</span>
+        </div>
+        {{end}}
+        {{if .Maintenance.NextAction}}
+        <div class="status-item">
+          <span class="label">建议后续操作:</span>
+          <span class="value highlight" id="next-action">{{.Maintenance.NextAction}}</span>
+        </div>
+        {{end}}
+      </div>
+    </section>
+
+    <!-- Disposition action form -->
+    <section class="card action-card">
+      <h2>发起内容证据处置</h2>
+      <form id="disposition-form">
+        <div class="form-group">
+          <label for="question-select">选择题目版本:</label>
+          <select id="question-select" required>
+            <option value="">-- 请选择目标题目 --</option>
+            {{range .Questions}}
+            <option value="{{.ID}}" data-revision="{{.Revision}}">[{{.Status}}] {{.Stem}} ({{.TaskFamily}})</option>
+            {{end}}
+          </select>
+        </div>
+        <div class="form-group">
+          <label for="action-select">处置动作:</label>
+          <select id="action-select" required>
+            <option value="disputed">标记争议 (disputed - 隔离证据/FSRS)</option>
+            <option value="invalidate">确认失效 (invalidate - 排除证据并修订报告)</option>
+            <option value="restore_validity">恢复有效 (restore_validity - 重新纳入有效内容)</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label for="reason-input">处置原因:</label>
+          <input type="text" id="reason-input" placeholder="例如：错答案/多解/印刷错误" required>
+        </div>
+        <button type="submit" id="btn-submit-disposition" class="btn-primary">提交处置并触发重建</button>
+        <div id="action-feedback" class="feedback-msg"></div>
+      </form>
+    </section>
+
+    <!-- Dispositions history -->
+    <section class="card">
+      <h2>处置历史记录</h2>
+      {{if .Dispositions}}
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>题目题干</th>
+            <th>题型</th>
+            <th>动作</th>
+            <th>原因</th>
+            <th>关联重建 Run</th>
+          </tr>
+        </thead>
+        <tbody>
+          {{range .Dispositions}}
+          <tr>
+            <td>{{.Stem}}</td>
+            <td>{{.TaskFamily}}</td>
+            <td><span class="tag tag-{{.Action}}">{{.Action}}</span></td>
+            <td>{{.Reason}}</td>
+            <td class="monospace small">{{.RebuildRunID}}</td>
+          </tr>
+          {{end}}
+        </tbody>
+      </table>
+      {{else}}
+      <p class="empty-text">暂无处置记录</p>
+      {{end}}
+    </section>
+
+    <!-- Rebuild runs table -->
+    <section class="card">
+      <h2>模型重建运行 (model_rebuild_run)</h2>
+      {{if .RebuildRuns}}
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>Run ID</th>
+            <th>类型</th>
+            <th>基线版本</th>
+            <th>目标版本</th>
+            <th>状态</th>
+            <th>前序 Run</th>
+          </tr>
+        </thead>
+        <tbody>
+          {{range .RebuildRuns}}
+          <tr>
+            <td class="monospace small">{{.ID}}</td>
+            <td>{{.Kind}}</td>
+            <td class="monospace">{{.BaseActiveVersion}}</td>
+            <td class="monospace">{{.TargetProjectionVersion}}</td>
+            <td><span class="status-badge status-{{.Status}}">{{.Status}}</span></td>
+            <td class="monospace small">{{if .PredecessorRunID}}{{.PredecessorRunID}}{{else}}-{{end}}</td>
+          </tr>
+          {{end}}
+        </tbody>
+      </table>
+      {{else}}
+      <p class="empty-text">暂无重建运行记录</p>
+      {{end}}
+    </section>
+
+    <!-- Revised assessment reports -->
+    <section class="card">
+      <h2>历史考试报告修订审计</h2>
+      {{if .RevisedReports}}
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>会话 ID</th>
+            <th>修订版本</th>
+            <th>总题数</th>
+            <th>有效题数</th>
+            <th>作废题数</th>
+            <th>正确数</th>
+            <th>有效正确率</th>
+            <th>原因</th>
+          </tr>
+        </thead>
+        <tbody>
+          {{range .RevisedReports}}
+          <tr>
+            <td class="monospace small">{{.SessionID}}</td>
+            <td>Rev {{.ResultRevision}}</td>
+            <td>{{.TotalCount}}</td>
+            <td>{{.ValidCount}}</td>
+            <td class="highlight-void">{{.VoidCount}}</td>
+            <td>{{.CorrectCount}}</td>
+            <td>{{if .Ratio}}{{.Ratio}}{{else}}null (全部作废){{end}}</td>
+            <td>{{.Reason}}</td>
+          </tr>
+          {{end}}
+        </tbody>
+      </table>
+      {{else}}
+      <p class="empty-text">暂无考试报告修订记录</p>
+      {{end}}
+    </section>
+  </div>
+
+  <script type="module" src="/static/quality/quality.js"></script>
+</body>
+</html>

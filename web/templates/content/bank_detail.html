@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{.Bank.Name}} - 题库详情 - Adaptive Vocabulary</title>
+    <link rel="stylesheet" href="/static/content/content.css">
+</head>
+<body>
+    <header class="app-header">
+        <div class="header-container">
+            <h1 class="logo"><a href="/">Adaptive Vocabulary</a></h1>
+            <nav class="nav-links">
+                <a href="/" class="nav-link">首页</a>
+                <a href="/banks" class="nav-link active">题库</a>
+                <a href="/practice" class="nav-link">自适应练习</a>
+                <a href="/exams/new" class="nav-link">阶段考试</a>
+                <a href="/imports" class="nav-link">词表导入</a>
+                <a href="/generation" class="nav-link">内容生成</a>
+                <a href="/quality" class="nav-link">质量与维护</a>
+            </nav>
+        </div>
+    </header>
+
+    <main class="main-container">
+        <div class="breadcrumb">
+            <a href="/banks">&larr; 返回题库列表</a>
+        </div>
+
+        <section class="bank-detail-header" data-bank-id="{{.Bank.ID}}" data-revision="{{.Bank.Revision}}">
+            <div class="title-with-actions">
+                <div>
+                    <h2 id="bank-detail-name">{{.Bank.Name}}</h2>
+                    <p class="meta-info">版本修订 (Revision): <span id="bank-revision-val">{{.Bank.Revision}}</span> | ID: <code>{{.Bank.ID}}</code></p>
+                </div>
+                <div class="actions">
+                    {{if not .Bank.Archived}}
+                    <a href="/banks/{{.Bank.ID}}/import" class="btn btn-outline" id="btn-import-vocab">导入词表</a>
+                    <a href="/practice?bank_id={{.Bank.ID}}" class="btn btn-primary" id="btn-start-practice">开始练习</a>
+                    <button id="btn-archive-bank" class="btn btn-warning">归档题库</button>
+                    {{else}}
+                    <span class="badge badge-secondary">已归档</span>
+                    {{end}}
+                </div>
+            </div>
+            {{if .Bank.Note}}<p class="bank-detail-note">{{.Bank.Note}}</p>{{end}}
+
+            <div class="bank-stats detailed">
+                <div class="stat-item">
+                    <span class="stat-value" id="member-count-val">{{.Bank.MemberCount}}</span>
+                    <span class="stat-label">词义总数</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-value">{{index .Bank.TaskCounts "meaning_recognition"}}</span>
+                    <span class="stat-label">词义识别题</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-value">{{index .Bank.TaskCounts "reverse_selection"}}</span>
+                    <span class="stat-label">反向选择题</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-value">{{index .Bank.TaskCounts "context_selection"}}</span>
+                    <span class="stat-label">语境选择题</span>
+                </div>
+            </div>
+        </section>
+
+        <section class="members-section">
+            <h3>包含词义与学习内容</h3>
+            <div id="operation-msg" class="error-banner hidden"></div>
+            <table class="data-table" id="members-table">
+                <thead>
+                    <tr>
+                        <th>单词</th>
+                        <th>词性</th>
+                        <th>标准释义</th>
+                        <th>数据源</th>
+                        <th>操作</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {{range .Bank.Members}}
+                    <tr data-sense-id="{{.SenseID}}">
+                        <td class="font-bold">{{.CanonicalForm}}</td>
+                        <td><span class="pos-tag">{{.PartOfSpeech}}</span></td>
+                        <td>{{.Meaning}}</td>
+                        <td><span class="text-muted">{{.SourceID}}</span></td>
+                        <td>
+                            <button class="btn btn-sm btn-danger btn-remove-member" data-sense-id="{{.SenseID}}">移除</button>
+                        </td>
+                    </tr>
+                    {{else}}
+                    <tr>
+                        <td colspan="5" class="empty-state">当前题库暂无成员词义。</td>
+                    </tr>
+                    {{end}}
+                </tbody>
+            </table>
+        </section>
+    </main>
+
+    <script type="module" src="/static/content/content.js"></script>
+</body>
+</html>

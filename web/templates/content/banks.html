@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>题库管理 - Adaptive Vocabulary</title>
+    <link rel="stylesheet" href="/static/content/content.css">
+</head>
+<body>
+    <header class="app-header">
+        <div class="header-container">
+            <h1 class="logo"><a href="/">Adaptive Vocabulary</a></h1>
+            <nav class="nav-links">
+                <a href="/" class="nav-link">首页</a>
+                <a href="/banks" class="nav-link active">题库</a>
+                <a href="/practice" class="nav-link">自适应练习</a>
+                <a href="/exams/new" class="nav-link">阶段考试</a>
+                <a href="/imports" class="nav-link">词表导入</a>
+                <a href="/generation" class="nav-link">内容生成</a>
+                <a href="/quality" class="nav-link">质量与维护</a>
+            </nav>
+        </div>
+    </header>
+
+    <main class="main-container">
+        <div class="page-title-row">
+            <h2>题库管理</h2>
+            <button id="btn-show-create-modal" class="btn btn-primary">新建题库</button>
+        </div>
+
+        <section class="banks-grid" id="banks-list">
+            {{range .Banks}}
+            <div class="bank-card {{if .Archived}}bank-archived{{end}}" data-bank-id="{{.ID}}">
+                <div class="bank-card-header">
+                    <h3 class="bank-name"><a href="/banks/{{.ID}}">{{.Name}}</a></h3>
+                    {{if .Archived}}<span class="badge badge-secondary">已归档</span>{{end}}
+                </div>
+                {{if .Note}}<p class="bank-note">{{.Note}}</p>{{end}}
+                <div class="bank-stats">
+                    <div class="stat-item">
+                        <span class="stat-value">{{.MemberCount}}</span>
+                        <span class="stat-label">包含词义</span>
+                    </div>
+                    <div class="stat-item">
+                        <span class="stat-value">{{index .TaskCounts "meaning_recognition"}}</span>
+                        <span class="stat-label">词义识别</span>
+                    </div>
+                    <div class="stat-item">
+                        <span class="stat-value">{{index .TaskCounts "reverse_selection"}}</span>
+                        <span class="stat-label">反向选择</span>
+                    </div>
+                    <div class="stat-item">
+                        <span class="stat-value">{{index .TaskCounts "context_selection"}}</span>
+                        <span class="stat-label">语境选择</span>
+                    </div>
+                </div>
+                <div class="bank-card-footer">
+                    <a href="/practice?bank_id={{.ID}}" class="btn btn-sm btn-primary">开始练习</a>
+                    <a href="/banks/{{.ID}}" class="btn btn-sm btn-outline">查看与管理</a>
+                </div>
+            </div>
+            {{else}}
+            <p class="empty-state">暂无题库，请创建题库或加载种子数据。</p>
+            {{end}}
+        </section>
+
+        <!-- Create Bank Modal -->
+        <div id="create-bank-modal" class="modal-backdrop hidden">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h3>新建题库</h3>
+                    <button class="btn-close" id="btn-close-create-modal">&times;</button>
+                </div>
+                <form id="create-bank-form">
+                    <div class="form-group">
+                        <label for="bank-name-input">题库名称（1–120 字符）</label>
+                        <input type="text" id="bank-name-input" name="name" required maxlength="120" placeholder="例如：CET-6 核心词汇">
+                    </div>
+                    <div class="form-group">
+                        <label for="bank-note-input">备注说明（可选）</label>
+                        <textarea id="bank-note-input" name="note" rows="3" placeholder="关于该题库的学习说明..."></textarea>
+                    </div>
+                    <div id="create-error-msg" class="error-banner hidden"></div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" id="btn-cancel-create">取消</button>
+                        <button type="submit" class="btn btn-primary" id="btn-submit-create">立即创建</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </main>
+
+    <script type="module" src="/static/content/content.js"></script>
+</body>
+</html>

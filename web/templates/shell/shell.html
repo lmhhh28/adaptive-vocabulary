@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Adaptive Vocabulary - 个人自适应词汇系统</title>
+  <link rel="stylesheet" href="/static/shell/shell.css">
+</head>
+<body>
+  <!-- Top Maintenance Notification Banner -->
+  <div id="maintenance-banner" class="maintenance-banner"></div>
+
+  <!-- Global Application Header -->
+  <header class="app-header">
+    <div class="header-container">
+      <div class="logo">
+        <a href="/">
+          <span style="font-size: 1.4rem;">📘</span>
+          <span id="app-title">Adaptive Vocabulary</span>
+        </a>
+        <div id="header-status-badge" class="header-status-badge" title="服务正常运行">
+          <span class="header-status-dot"></span>
+          <span>就绪</span>
+        </div>
+      </div>
+      <nav class="nav-links" id="main-nav">
+        <a href="/" class="nav-link active">首页</a>
+        <a href="/banks" class="nav-link">题库</a>
+        <a href="/practice" class="nav-link">自适应练习</a>
+        <a href="/exams/new" class="nav-link">阶段考试</a>
+        <a href="/imports" class="nav-link">词表导入</a>
+        <a href="/generation" class="nav-link">内容生成</a>
+        <a href="/quality" class="nav-link">质量与维护</a>
+      </nav>
+    </div>
+  </header>
+
+  <!-- Main Shell Container -->
+  <main class="shell-container">
+    <!-- Active Session Banner (Dynamically shown if practice/exam in progress) -->
+    <div id="active-session-callout" class="active-session-callout" style="display: none;">
+      <div class="active-session-text">
+        <span style="font-size: 1.1rem; margin-right: 0.4rem;">⚡</span>
+        <span id="active-session-text">当前有未完成的学习会话</span>
+      </div>
+      <a href="/practice" id="active-session-action" class="btn btn-primary btn-sm">继续作答 &rarr;</a>
+    </div>
+
+    <!-- Hero / Status Card -->
+    <section class="hero-card">
+      <div class="hero-header">
+        <div class="hero-title-area">
+          <h2 style="font-size: 1.5rem; margin: 0 0 0.35rem 0;">个人自适应词汇学习与评测系统</h2>
+          <p class="hero-subtitle">基于客观作答历史与 FSRS 记忆间隔算法，无须主观评价即可自动调度练习与考试。</p>
+        </div>
+        <div class="status-badge">
+          <span class="status-dot"></span>
+          <span id="system-status">服务运行就绪</span>
+        </div>
+      </div>
+
+      <!-- Environment / Runtime Spec Pills (conforms to PL-01 assertions) -->
+      <div class="env-pills">
+        <div class="env-pill">
+          <span class="env-label">契约版本:</span>
+          <span class="env-value" id="contract-version">{{.ContractVersion}}</span>
+        </div>
+        <div class="env-pill">
+          <span class="env-label">Schema 版本:</span>
+          <span class="env-value" id="schema-version">{{.SchemaVersion}}</span>
+        </div>
+        <div class="env-pill">
+          <span class="env-label">SQLite 版本:</span>
+          <span class="env-value" id="sqlite-version">{{.SQLiteVersion}}</span>
+        </div>
+        <div class="env-pill">
+          <span class="env-label">运行模式:</span>
+          <span class="env-value" id="runtime-mode">{{.Mode}}</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- Core Modules Grid -->
+    <section class="dashboard-grid">
+      <!-- Card 1: Bank Management -->
+      <div class="module-card">
+        <div>
+          <div class="module-icon-title">
+            <span class="module-icon">📚</span>
+            <h3 class="module-title">题库管理</h3>
+          </div>
+          <p class="module-desc">查看已导入的标准题库、词义分布与各题型配额统计；创建新词库或归档历史题库。</p>
+        </div>
+        <div class="module-actions">
+          <a href="/banks" class="btn btn-primary btn-sm">浏览题库</a>
+          <a href="/imports" class="btn btn-secondary btn-sm">导入新词表</a>
+        </div>
+      </div>
+
+      <!-- Card 2: Adaptive Practice -->
+      <div class="module-card">
+        <div>
+          <div class="module-icon-title">
+            <span class="module-icon">✍️</span>
+            <h3 class="module-title">自适应训练</h3>
+          </div>
+          <p class="module-desc">系统基于 FSRS 遗忘曲线与冷却规则自动选题；即时提交并反馈，错题自动穿插重测。</p>
+        </div>
+        <div class="module-actions">
+          <a href="/practice" class="btn btn-primary btn-sm">开始训练</a>
+        </div>
+      </div>
+
+      <!-- Card 3: Stage Exam -->
+      <div class="module-card">
+        <div>
+          <div class="module-icon-title">
+            <span class="module-icon">📝</span>
+            <h3 class="module-title">阶段评测考试</h3>
+          </div>
+          <p class="module-desc">通过多题型配额求解与目标词去重组卷，交卷前绝不提前泄题，交卷后输出详细评估报告。</p>
+        </div>
+        <div class="module-actions">
+          <a href="/exams/new" class="btn btn-primary btn-sm">发起考试</a>
+        </div>
+      </div>
+
+      <!-- Card 4: Word Import -->
+      <div class="module-card">
+        <div>
+          <div class="module-icon-title">
+            <span class="module-icon">📥</span>
+            <h3 class="module-title">词表导入与清洗</h3>
+          </div>
+          <p class="module-desc">支持 UTF-8 格式的 TXT、CSV 词表上传或文本粘贴，自动匹配标准词义并提供歧义处置。</p>
+        </div>
+        <div class="module-actions">
+          <a href="/imports" class="btn btn-secondary btn-sm">上传词表</a>
+        </div>
+      </div>
+
+      <!-- Card 5: Quality & Maintenance -->
+      <div class="module-card">
+        <div>
+          <div class="module-icon-title">
+            <span class="module-icon">🛡️</span>
+            <h3 class="module-title">质量与维护控制台</h3>
+          </div>
+          <p class="module-desc">处理题目争议（dispute）、作废题目（invalidate）并触发投影安全重建与报告修订审计。</p>
+        </div>
+        <div class="module-actions">
+          <a href="/quality" class="btn btn-secondary btn-sm">维护控制台</a>
+        </div>
+      </div>
+
+      <!-- Card 6: Backup & Disaster Recovery -->
+      <div class="module-card">
+        <div>
+          <div class="module-icon-title">
+            <span class="module-icon">💾</span>
+            <h3 class="module-title">数据备份与恢复</h3>
+          </div>
+          <p class="module-desc">支持原生 SQLite 快照备份与 SHA-256 完整性清单对账，灾难时可一键恢复至全新数据目录。</p>
+        </div>
+        <div class="module-actions">
+          <a href="/quality" class="btn btn-secondary btn-sm">查看系统状态</a>
+        </div>
+      </div>
+    </section>
+
+    <!-- Keyboard Shortcuts Guide -->
+    <section class="shortcuts-section" id="shortcuts-section">
+      <h3 class="shortcuts-title">
+        <span>⌨️</span>
+        <span>键盘交互与无障碍快捷键</span>
+      </h3>
+      <div class="shortcuts-grid">
+        <div class="shortcut-item">
+          <span>选择第 1/2/3/4 项</span>
+          <div><kbd>1</kbd> <kbd>2</kbd> <kbd>3</kbd> <kbd>4</kbd> 或 <kbd>A</kbd>–<kbd>D</kbd></div>
+        </div>
+        <div class="shortcut-item">
+          <span>确认提交 / 练习下一题</span>
+          <div><kbd>Enter</kbd></div>
+        </div>
+        <div class="shortcut-item">
+          <span>考试切换上一题 / 下一题</span>
+          <div><kbd>&larr;</kbd> <kbd>&rarr;</kbd></div>
+        </div>
+        <div class="shortcut-item">
+          <span>快捷键帮助定位</span>
+          <div><kbd>?</kbd> 或 <kbd>H</kbd></div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <script type="module" src="/static/shell/shell.js"></script>
+</body>
+</html>

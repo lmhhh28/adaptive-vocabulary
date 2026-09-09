@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>考试测评 - Adaptive Vocabulary</title>
+    <link rel="stylesheet" href="/static/content/content.css">
+    <link rel="stylesheet" href="/static/exam/exam.css">
+</head>
+<body>
+    <header class="app-header">
+        <div class="header-container">
+            <h1 class="logo"><a href="/">Adaptive Vocabulary</a></h1>
+            <nav class="nav-links">
+                <a href="/" class="nav-link">首页</a>
+                <a href="/banks" class="nav-link">题库</a>
+                <a href="/practice" class="nav-link">自适应练习</a>
+                <a href="/exams/new" class="nav-link active">阶段考试</a>
+                <a href="/imports" class="nav-link">词表导入</a>
+                <a href="/generation" class="nav-link">内容生成</a>
+                <a href="/quality" class="nav-link">质量与维护</a>
+            </nav>
+        </div>
+    </header>
+
+    <main class="main-container" id="exam-app" data-mode="{{.Mode}}" data-exam-id="{{.ExamID}}">
+        <!-- Status banner -->
+        <div id="status-banner" class="alert-banner hidden"></div>
+
+        {{if eq .Mode "new"}}
+        <!-- Create Exam View -->
+        <section id="exam-new-view" class="exam-card">
+            <h2>创建阶段性词汇考试</h2>
+            <p class="text-muted">系统将根据多题型约束与目标词去重规则自动组卷，统一交卷评分。</p>
+
+            <form id="create-exam-form" class="exam-form">
+                <div class="form-group">
+                    <label for="bank-select" class="form-label">选择题库：</label>
+                    <select id="bank-select" class="form-control" required>
+                        {{range .Banks}}
+                        <option value="{{.ID}}">{{.Name}}</option>
+                        {{else}}
+                        <option value="" disabled>无可用题库，请先添加</option>
+                        {{end}}
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label for="question-count" class="form-label">题目数量：</label>
+                    <input type="number" id="question-count" class="form-control" value="3" min="1" max="100" required>
+                </div>
+
+                <div class="form-group">
+                    <label for="time-limit" class="form-label">考试限时（分钟，可选，留空为不限时）：</label>
+                    <input type="number" id="time-limit" class="form-control" placeholder="例如 10" min="1" max="240">
+                </div>
+
+                <div class="form-actions">
+                    <button type="submit" class="btn btn-primary btn-large" id="btn-create-exam">开始组卷考试</button>
+                    <a href="/banks" class="btn btn-secondary">返回题库</a>
+                </div>
+            </form>
+        </section>
+        {{else}}
+        <!-- Take Exam View -->
+        <section id="exam-take-view" class="exam-active-layout">
+            <div class="exam-header-bar">
+                <div class="exam-meta-info">
+                    <span class="badge badge-primary" id="exam-task-family">考试中</span>
+                    <span class="exam-progress-text" id="exam-progress-label">第 1 / 3 题</span>
+                </div>
+                <div class="exam-timer-wrap" id="timer-wrap">
+                    <span class="timer-icon">&#9200;</span>
+                    <span id="exam-timer">--:--</span>
+                </div>
+                <div class="exam-actions">
+                    <button id="btn-submit-exam" class="btn btn-primary">提交试卷</button>
+                    <button id="btn-abandon-exam" class="btn btn-outline btn-danger-outline">放弃考试</button>
+                </div>
+            </div>
+
+            <div class="exam-body-grid">
+                <!-- Main Question Area -->
+                <div class="exam-question-card">
+                    <div class="question-header">
+                        <span class="question-ordinal" id="q-ordinal-label">题目 1</span>
+                        <span class="badge badge-secondary" id="q-task-family-label">词义选择</span>
+                    </div>
+
+                    <h3 class="question-stem" id="q-stem">正在加载试卷题目...</h3>
+
+                    <div class="options-list" id="q-options-list">
+                        <!-- Options generated dynamically -->
+                    </div>
+
+                    <div class="question-footer-actions">
+                        <button id="btn-clear-selection" class="btn btn-sm btn-secondary">清除当前题选择</button>
+                        <div class="nav-btn-group">
+                            <button id="btn-prev-q" class="btn btn-secondary" disabled>上一题</button>
+                            <button id="btn-next-q" class="btn btn-secondary">下一题</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Question Navigation Sheet -->
+                <aside class="exam-nav-sidebar">
+                    <h4>答题卡</h4>
+                    <div class="nav-grid" id="exam-nav-grid">
+                        <!-- Navigation bubbles -->
+                    </div>
+                    <div class="nav-legend">
+                        <span class="legend-item"><span class="dot dot-answered"></span>已作答</span>
+                        <span class="legend-item"><span class="dot dot-unanswered"></span>未作答</span>
+                    </div>
+                </aside>
+            </div>
+        </section>
+        {{end}}
+    </main>
+
+    <script type="module" src="/static/exam/exam.js"></script>
+</body>
+</html>

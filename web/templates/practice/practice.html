@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>自适应训练 - Adaptive Vocabulary</title>
+    <link rel="stylesheet" href="/static/content/content.css">
+    <link rel="stylesheet" href="/static/practice/practice.css">
+</head>
+<body>
+    <header class="app-header">
+        <div class="header-container">
+            <h1 class="logo"><a href="/">Adaptive Vocabulary</a></h1>
+            <nav class="nav-links">
+                <a href="/" class="nav-link">首页</a>
+                <a href="/banks" class="nav-link">题库</a>
+                <a href="/practice" class="nav-link active">自适应练习</a>
+                <a href="/exams/new" class="nav-link">阶段考试</a>
+                <a href="/imports" class="nav-link">词表导入</a>
+                <a href="/generation" class="nav-link">内容生成</a>
+                <a href="/quality" class="nav-link">质量与维护</a>
+            </nav>
+        </div>
+    </header>
+
+    <main class="main-container" id="practice-app" data-initial-bank-id="{{.InitialBankID}}">
+        <!-- Error / Notification banner -->
+        <div id="status-banner" class="alert-banner hidden"></div>
+
+        <!-- View 1: Bank Selection (when no active session) -->
+        <section id="bank-select-view" class="practice-card hidden">
+            <h2>选择题库开始训练</h2>
+            <p class="text-muted">系统将根据客观答题历史自动为您调度练习与穿插纠错。</p>
+            <div class="banks-select-grid">
+                {{range .Banks}}
+                <div class="bank-select-card" data-bank-id="{{.ID}}">
+                    <h3>{{.Name}}</h3>
+                    <p class="meta-info">包含 {{.MemberCount}} 个词义</p>
+                    <button class="btn btn-primary btn-start-bank" data-bank-id="{{.ID}}">开始练习</button>
+                </div>
+                {{else}}
+                <p class="empty-state">暂无可用题库，请先前往<a href="/banks">题库管理</a>加载词库。</p>
+                {{end}}
+            </div>
+        </section>
+
+        <!-- View 2: Active Practice Session -->
+        <section id="practice-view" class="hidden">
+            <div class="practice-top-bar">
+                <div class="session-meta">
+                    <span class="badge badge-primary" id="task-family-badge">词汇练习</span>
+                    <span class="question-index" id="question-index-label">第 1 题</span>
+                </div>
+                <div class="session-actions">
+                    <button id="btn-end-practice" class="btn btn-sm btn-outline btn-danger-outline">结束练习</button>
+                </div>
+            </div>
+
+            <div class="practice-question-card">
+                <h3 class="question-stem" id="question-stem">题目加载中...</h3>
+
+                <div class="options-list" id="options-list">
+                    <!-- Options populated dynamically -->
+                </div>
+
+                <div class="question-action-row" id="submit-row">
+                    <button id="btn-submit" class="btn btn-primary btn-large" disabled>提交答案</button>
+                </div>
+
+                <!-- Feedback Section (shown after submit) -->
+                <div id="feedback-section" class="feedback-card hidden">
+                    <div id="feedback-result-banner" class="feedback-banner"></div>
+                    <div class="feedback-details">
+                        <div class="feedback-row" id="correct-answer-row">
+                            <span class="label">正确答案：</span>
+                            <span class="val font-bold" id="correct-answer-val"></span>
+                        </div>
+                        <div class="feedback-row" id="explanation-row">
+                            <span class="label">解析：</span>
+                            <span class="val" id="explanation-val"></span>
+                        </div>
+                    </div>
+                    <div class="feedback-action-row">
+                        <button id="btn-next" class="btn btn-primary btn-large">下一题 (Enter)</button>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- View 3: Unavailable / Exhausted state -->
+        <section id="unavailable-view" class="practice-card hidden">
+            <div class="unavailable-icon">&#9203;</div>
+            <h2>暂无满足条件的练习题目</h2>
+            <p id="unavailable-reason" class="text-muted">当前题库中的所有题目均处于冷却中或已完成本轮学习。</p>
+            <div class="counts-summary" id="unavailable-counts"></div>
+            <div class="action-buttons">
+                <button id="btn-end-unavailable" class="btn btn-primary">结束本轮练习</button>
+                <a href="/banks" class="btn btn-secondary">返回题库</a>
+            </div>
+        </section>
+
+        <!-- View 4: Completed Summary -->
+        <section id="summary-view" class="practice-card hidden">
+            <div class="completion-icon">&#10004;</div>
+            <h2>练习已结束</h2>
+            <div class="summary-stats">
+                <div class="stat-box">
+                    <span class="stat-num" id="summary-answered-count">0</span>
+                    <span class="stat-desc">完成题目</span>
+                </div>
+                <div class="stat-box">
+                    <span class="stat-num" id="summary-unresolved-count">0</span>
+                    <span class="stat-desc">待纠错词义</span>
+                </div>
+            </div>
+            <div class="action-buttons">
+                <button id="btn-restart-practice" class="btn btn-primary">继续练习</button>
+                <a href="/banks" class="btn btn-secondary">返回题库列表</a>
+            </div>
+        </section>
+    </main>
+
+    <script type="module" src="/static/practice/practice.js"></script>
+</body>
+</html>
