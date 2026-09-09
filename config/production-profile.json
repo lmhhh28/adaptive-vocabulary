@@ -1,0 +1,21 @@
+{
+  "config_version": "generation-v2",
+  "budget_policy_version": "budget-v2",
+  "policy_file": "config/policy-v2.json",
+  "enabled": true,
+  "mode": "production",
+  "quality_policy_version": "quality-v1",
+  "production_adapter": "chat-completions-json-v1",
+  "generator": {
+    "base_url": "https://api.deepseek.com",
+    "model": "deepseek-v4-flash",
+    "api_key_env": "AVOCAB_GENERATOR_API_KEY",
+    "max_output_tokens": 4096
+  },
+  "evaluator": {
+    "base_url": "https://api.deepseek.com",
+    "model": "deepseek-v4-flash",
+    "api_key_env": "AVOCAB_EVALUATOR_API_KEY",
+    "max_output_tokens": 4096
+  }
+}

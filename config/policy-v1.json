@@ -1,0 +1,46 @@
+{
+  "schema_version": 1,
+  "observation_policy_version": "observation-v1",
+  "selection_policy_version": "selection-v1",
+  "grading_version": "grading-v1",
+  "timezone": "Asia/Shanghai",
+  "task_families": ["meaning_recognition", "reverse_selection", "context_selection"],
+  "fsrs": {
+    "algorithm_version": "FSRS-6",
+    "implementation": "github.com/open-spaced-repetition/go-fsrs/v4",
+    "implementation_version": "v4.0.0",
+    "desired_retention": 0.9,
+    "maximum_interval_days": 36500,
+    "enable_short_term": true,
+    "enable_fuzz": false,
+    "parameter_set": "go-fsrs-v4.0.0-default",
+    "weights": [0.212, 1.2931, 2.3065, 8.2956, 6.4133, 0.8334, 3.0194, 0.001, 1.8722, 0.1666, 0.796, 1.4835, 0.0614, 0.2629, 1.6483, 0.6014, 1.8729, 0.5425, 0.0912, 0.0658, 0.1542],
+    "learning_steps_minutes": [1, 10],
+    "relearning_steps_minutes": [10]
+  },
+  "selection": {
+    "unseen_every_normal_positions": 4,
+    "first_unseen_position": 1,
+    "normal_distinct_lexeme_gap": 5,
+    "correction_distinct_lexeme_gap": 3,
+    "max_corrections_per_unit_per_session": 2,
+    "new_session_cooldown_release_hours": 24,
+    "recent_exposure_hours": 24,
+    "confusion_min_wrong_selections": 2
+  },
+  "exam": {"max_questions": 200, "max_search_states": 10000, "random_algorithm": "math/rand/v2.PCG"},
+  "generation": {
+    "enabled": false,
+    "forms_per_unit": 3,
+    "semantic_evaluations": 2,
+    "max_semantic_revisions": 2,
+    "max_network_attempts_per_call": 3,
+    "request_timeout_seconds": 45,
+    "lease_seconds": 120,
+    "renew_every_seconds": 30,
+    "max_concurrent_items": 2,
+    "max_units_per_job": 100,
+    "max_requests_per_job": 100,
+    "max_tokens_per_job": 200000
+  }
+}

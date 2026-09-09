@@ -1,0 +1,38 @@
+{
+  "benchmark_version": "quality-benchmark-v1",
+  "contract_version": "1.1.0",
+  "dataset": {
+    "path": "fixtures/quality-benchmark/cases.json",
+    "sha256": "148acf85a45b8403d755d1d97ff668eee9130742f570746e77eb6e96f198428c",
+    "total_cases": 45,
+    "negative_cases": 30,
+    "positive_cases": 15
+  },
+  "thresholds": {
+    "required_negative_categories": [
+      "wrong_meaning",
+      "multiple_answers",
+      "no_answer",
+      "answer_conflict",
+      "explanation_conflict",
+      "distractor_conflict"
+    ],
+    "min_negative_cases_per_category": 5,
+    "min_total_negative_cases": 30,
+    "min_total_positive_cases": 15,
+    "required_interception_rate": 1.0,
+    "max_negative_leak_count": 0,
+    "max_positive_false_rejection_rate": 0.20
+  },
+  "protocol": {
+    "semantic_evaluations_per_case": 2,
+    "criteria": [
+      "target_meaning",
+      "naturalness",
+      "distractor_validity",
+      "unique_answer"
+    ],
+    "verdict_rule": "both_evaluations_must_pass"
+  },
+  "production_profile_reference": "config/production-profile.json"
+}

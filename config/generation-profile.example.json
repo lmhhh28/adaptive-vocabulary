@@ -1,0 +1,22 @@
+{
+  "config_version": "generation-v2",
+  "budget_policy_version": "budget-v2",
+  "policy_file": "config/policy-v2.json",
+  "enabled": false,
+  "mode": "fixture",
+  "quality_policy_version": "quality-v1",
+  "production_adapter": "chat-completions-json-v1",
+  "generator": {
+    "base_url": null,
+    "model": null,
+    "api_key_env": "AVOCAB_GENERATOR_API_KEY",
+    "max_output_tokens": 2048
+  },
+  "evaluator": {
+    "base_url": null,
+    "model": null,
+    "api_key_env": "AVOCAB_EVALUATOR_API_KEY",
+    "max_output_tokens": 1024
+  },
+  "configuration_rule": "Production requires explicit HTTPS base_url ending in /v1 and fixed model identifiers for both profiles; null is valid only while disabled. POST /chat/completions uses model/messages/temperature/max_tokens and JSON response_format; unsupported providers require a new adapter version."
+}

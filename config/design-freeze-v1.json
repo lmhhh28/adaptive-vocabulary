@@ -1,0 +1,135 @@
+{
+  "format_version": 1,
+  "design_version": "1.1.0",
+  "frozen_on": "2026-09-08",
+  "active_policy": "config/policy-v2.json",
+  "implementation_plan": "config/implementation-plan-v1.json",
+  "scope": "specification, fixtures and dependency locks; application implementation not complete",
+  "files": [
+    {
+      "path": "README.md",
+      "bytes": 5653,
+      "sha256": "ec91d774e63bbf416e53ecbcf75de0c625efc028d922250c823a19f9b427b36e"
+    },
+    {
+      "path": "config/content-sources.json",
+      "bytes": 2439,
+      "sha256": "22d20ff20c0c7aa38064e56f0bc58bb6748e818edb6280e66ccf26ee6ff8b8a7"
+    },
+    {
+      "path": "config/generation-profile.example.json",
+      "bytes": 849,
+      "sha256": "2da70378741439757243f102525d40cb0b6a21a77c7332b76aee105213f30191"
+    },
+    {
+      "path": "config/implementation-plan-v1.json",
+      "bytes": 25813,
+      "sha256": "db346093fbb8b1434bf8affe87c5b050ad99da968d35fae876b367511c3c5100"
+    },
+    {
+      "path": "config/policy-v1.json",
+      "bytes": 1697,
+      "sha256": "8e0f7bc47325a0ade13c589ad7231a35333dc160bd09ad8d1f2245067008c081"
+    },
+    {
+      "path": "config/policy-v2.json",
+      "bytes": 2794,
+      "sha256": "8089e6c5e7bafa0e576a447e7a8590e63ba1706bc785f8bf258a3653d88dbed8"
+    },
+    {
+      "path": "docs/00-frozen-design.md",
+      "bytes": 27652,
+      "sha256": "e5f15959762ce513a2bf72aac0d3cc4c3fefdca4f118ac4e30822720b10d54ca"
+    },
+    {
+      "path": "docs/01-product-and-decisions.md",
+      "bytes": 7048,
+      "sha256": "42085eebdfcea3605ed2db72d85a46e25dd042d10955755023a434f0ccdb9e98"
+    },
+    {
+      "path": "docs/02-architecture-and-data.md",
+      "bytes": 11066,
+      "sha256": "0c26cc99f666cf60a1f0d8622f344e06f2ff15cf2c68403dad819bb3f7cb48f2"
+    },
+    {
+      "path": "docs/03-learning-and-selection.md",
+      "bytes": 11408,
+      "sha256": "0f8424cd213aabcd0e47cde2cb4ced244376dc76ef93a90991e927424731db05"
+    },
+    {
+      "path": "docs/04-content-pipeline.md",
+      "bytes": 6203,
+      "sha256": "bb6ff1fe2edaa8d4e10693de118617a880d3d71e8eeba5ae8bf27ab4349494bd"
+    },
+    {
+      "path": "docs/05-api-and-validation.md",
+      "bytes": 10772,
+      "sha256": "15ee7af10804aba44822ba81d76cb67f2492a59b164d3236560496bd74384e70"
+    },
+    {
+      "path": "docs/06-sources.md",
+      "bytes": 4837,
+      "sha256": "810a3c22fe989278f5e7c9a497bfa45fe54b980e63763b230ec0853cd5de7156"
+    },
+    {
+      "path": "docs/07-dependencies-and-development.md",
+      "bytes": 9074,
+      "sha256": "2846b3899d27a8baf5e099f9f0617ce970ad1a7688ca8cf7da3c4327f77c07cc"
+    },
+    {
+      "path": "docs/08-http-contract.md",
+      "bytes": 15579,
+      "sha256": "fff2c4632924a45d0c990051b26efb848f128ca0513a3e3bba5e7a4fd297db4f"
+    },
+    {
+      "path": "docs/09-implementation-plan.md",
+      "bytes": 28646,
+      "sha256": "2ef38e49e38e4260257e727f594dbe33f090ca2056a3a688e9ef6b7497303830"
+    },
+    {
+      "path": "docs/10-review-resolutions.md",
+      "bytes": 15865,
+      "sha256": "7327447bb54eb45a00a64fe0f5b08786d08d68816ecd15a5dd31b686a7df4323"
+    },
+    {
+      "path": "e2e/pyproject.toml",
+      "bytes": 267,
+      "sha256": "b69e01682c720f27254e593c4ab6edceba0a7a2cd76043fa02a77879fe555f85"
+    },
+    {
+      "path": "e2e/uv.lock",
+      "bytes": 12548,
+      "sha256": "597638cc5b7e1f63f58a2a38a86e15a03aaa939330fbfd7a5cdefe04206ce9c2"
+    },
+    {
+      "path": "fixtures/content-v1.json",
+      "bytes": 26927,
+      "sha256": "943b34f875e5fab3d9ffbdd2676922df79fd881d787182ee4922bbc8319edcf1"
+    },
+    {
+      "path": "fixtures/exam-assembly-v1.json",
+      "bytes": 2477,
+      "sha256": "b3d40846b30d7113c547e43f63c11d747ddfeef0301212cd17647fce35bc5cde"
+    },
+    {
+      "path": "go.mod",
+      "bytes": 575,
+      "sha256": "a1ba5e2957ec9c49aabaf2714966f9b299a07a5b42ec55214c295fe9b1e075a7"
+    },
+    {
+      "path": "go.sum",
+      "bytes": 4342,
+      "sha256": "0a7b73c922e2b97c5335dab34a043639fa7db9f75abee59cefe2adb87076cb67"
+    },
+    {
+      "path": "worker/pyproject.toml",
+      "bytes": 308,
+      "sha256": "224ea441e8a2311fd3f23717162614c2270e43ab09593f00bafa026b80b7881e"
+    },
+    {
+      "path": "worker/uv.lock",
+      "bytes": 82815,
+      "sha256": "9337d02c96555334d4d56d64b0e4b44380e8c9353efad647526523bc6ee29403"
+    }
+  ]
+}

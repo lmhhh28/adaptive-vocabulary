@@ -1,6 +1,8 @@
 # 学习观测与选题策略
 
-目标：让不同客观作答证据影响选题，同时保留模型假设与原始事实。本文中的数字是可配置默认值，不是已经验证的最优学习规律。
+状态：冻结规格1.1.0。本文数字是已选定的版本化默认值，不是已验证的最优学习规律；排序、事件计数及小题库释放的完整规则见 [00第5节](00-frozen-design.md)，机器数值见 [policy-v2](../config/policy-v2.json)。
+
+1.1.0使用observation-v2/selection-v2。[10 R04/R05](10-review-resolutions.md)是曝光cutoff及资格矩阵的精确定义：普通证据包含normal、early_review和可靠考试single_response，但保留purpose/source分层；normal与early_review均推进普通位置和训练间隔。本文的“普通/正常”均按该定义解释，不能按字符串purpose==normal代替资格判断。
 
 ## 1. 三个不同问题
 
@@ -20,7 +22,7 @@ SelectionPolicy 结合三者选择目标词、task_family 与合格题目形式�
 source: practice | exam
 purpose: normal | correction | early_review
 response_history: single_response | revised | telemetry_incomplete | omitted
-exposure: same_form_seen / related_lexeme_seen / feedback_seen
+exposure: same_form_reserved / related_lexeme_reserved / feedback_available / reported_display
 timing: same_unit_interval / time_since_related_exposure / same_session
 quality: valid | disputed | invalidated
 ```
@@ -31,13 +33,13 @@ quality: valid | disputed | invalidated
 
 ObservationPolicy 读取事件、曝光历史、题目版本及事件修订，派生：计入哪些统计组、是否生成 FSRS review、其时间/评级、为什么排除、是否存在未被模型表达的暴露。policy version 与投影一起保存，不把 fsrs_eligible 永久写死在原始事件中。
 
-## 3. 首版建议观测策略
+## 3. 首版冻结观测策略
 
-| 观测 | 表现证据 | FSRS 建议 |
+| 观测 | 表现证据 | FSRS 规则 |
 | --- | --- | --- |
 | 合法普通训练提交 | 正常作答分组；额外按已知提示/形式分层 | 正确 Good、错误 Again，一次 |
 | 反馈后纠错 | correction 分组 | 每次有效提交使用真实时间和同日分支更新一次；不额外奖励 |
-| 提前复习 | early_review 分组 | 一次，实际间隔 |
+| 提前复习 | 普通证据并集，同时保留early_review维度 | 一次，实际间隔；计数/待巩固按10矩阵 |
 | 考试已交卷、可靠完整时间线、一次选择且未改答 | exam single_response 分组 | 一次；时间引用该选择被服务器接收的时刻 |
 | 考试发生改答或时间线不完整 | 保存首次、最终及变化过程 | 首版暂不生成 review，记录排除原因和未建模暴露 |
 | 未提交训练、考试未答 | abandonment/omitted 独立统计 | 不写 Again |
@@ -55,7 +57,7 @@ ObservationPolicy 读取事件、曝光历史、题目版本及事件修订，�
 
 ## 4. FSRS 适配
 
-推荐 FSRS-6 作为首版时间调度基线；Good/Again 二值映射不要求用户自评。Anki 支持二按钮使用方式，但对不同四选一形式的适用性仍需验证。[S01](06-sources.md)、[S02](06-sources.md)
+采用 FSRS-6 作为首版时间调度基线；Good/Again 二值映射不要求用户自评。Anki 支持二按钮使用方式，但对不同四选一形式的适用性仍需验证。[S01](06-sources.md)、[S02](06-sources.md)
 
 FSRS 的 S 是天数；R 随时间变化；D 是模型中的记忆难度量。它们不直接等于题目难度、能力百分数或观察到的四选一正确率。多个不同形式合并为同一 sense/task unit，是明确的模型近似。
 
@@ -63,13 +65,13 @@ FSRS 的 S 是天数；R 随时间变化；D 是模型中的记忆难度量。�
 
 默认不根据响应时间映射 Hard/Easy。RT 先作为分任务、形式和中断条件下的证据；“一秒熟练、五秒普通”不作为首版规则。normalized_rt_estimate 暂不要求实现，无有效样本时用 null 而不是 0。
 
-首版先用固定参数，不用少量个人日志训练个人权重。desired_retention 是内部调度参数，建议以 0.90 为可回放起点；它不是对用户承诺九成真实掌握。[S01](06-sources.md)
+首版用固定的库默认21权重与学习步长，快照在policy-v2；不训练个人权重。desired_retention固定0.90，fuzz关闭；它不是对用户承诺九成真实掌握。[S01](06-sources.md)
 
 ## 5. 表现与混淆怎样实际影响选题
 
 表现投影至少保留：有效样本数、正确数、正常/纠错/改答分组、最近普通观测、跨日期与题目形式覆盖。对外直接展示条件和数量；不把描述性正确率包装成完整能力模型。
 
-首版选题的弱项规则建议保持离散、可解释：
+首版弱项规则固定为离散、可解释的条件：
 
 - 无有效普通/考试单次选择观测的 task 标为未测，保留探索机会。
 - 最近一次有效正常观测答错的 task 标为待巩固；反馈后纠错答对只结束本轮队列，不自动清除延迟观察需求。
@@ -94,9 +96,9 @@ FSRS 的 S 是天数；R 随时间变化；D 是模型中的记忆难度量。�
 1. 找当前题库内有已发布题目的目标词义，排除停用/无效版本。
 2. 应用会话、实例、sibling 和纠错约束。
 3. 满足间隔条件的纠错先进入候选，但受次数上限限制。
-4. 普通题在到期复习和未测/新内容之间轮换，建议每 4 个普通位置为未测内容预留 1 个。
-5. 到期组优先当前应复习且待巩固的 task，再按 due_at、证据覆盖和有来源的内容重要度决定。
-6. 未测组优先有内容可测但证据缺失的 task；词频缺失用中性值，不把未知状态设成零后排除。
+4. 普通位置1、5、9…优先未测，其余优先到期；缺候选互补，纠错不占普通位置。
+5. 到期组优先待巩固，再按due_at、证据数/最早观察时间及稳定ID决定；完整排序元组见00。
+6. 未测组优先同词已测任务更少者，再按稳定ID；首版词频/重要度不参与排序，保留来源及空值。
 7. 为选中的 unit 选择合格题目形式，结合形式近期使用与混淆记录；固定选项顺序并保存实例。
 8. 保存 policy version、所属候选组、关键排序原因和随机输入。
 
@@ -104,13 +106,13 @@ FSRS 的 S 是天数；R 随时间变化；D 是模型中的记忆难度量。�
 
 ## 7. sibling 与纠错
 
-sibling_key 建议取 lexeme_id，以覆盖同词不同词义/题型的提示风险。
+sibling_key 固定为 lexeme_id，以覆盖同词不同词义/题型的提示风险。
 
-普通题默认距同一 lexeme 上次目标题至少出现 5 个其他 lexeme 的普通目标题；重复出现同一个其他 lexeme 不增加独立计数。这是可执行的冷却规则，不保证消除所有语义提示。
+普通题从同lexeme最近任意保留实例（含纠错）起，须完成5个不同其他lexeme的普通有效提交。保留实例记保守曝光，有效提交才推进间隔；重试、未答、退出不增加计数。冷却跨会话保存，不保证消除所有语义提示。
 
-小题库无法满足时，使用其他满足约束的候选；如果全部被冷却，结束本轮并说明候选受限，不静默缩短间隔或卡死接口。可以保留后台内容扩充请求。该降级行为在小题库测试后再决定是否增加显式继续操作。
+小题库全部受限时，next返回NO_ELIGIBLE_QUESTION及原因，用户可结束本轮，不在同会话缩短间隔。新会话距该lexeme最近保留/相关反馈满24小时可解除冷却；这只释放调度候选，不赋予独立证据标签。内容缺失仍需补充。
 
-纠错按触发事件单独管理，允许作为普通 sibling 规则的例外；默认隔 3 个其他目标单词后重测。优先同一 task_family 的不同 question_form，版本不同但正文相同不算实质换题。仅洗牌不是新形式。
+纠错每unit/会话只有一个活动item，保留触发链；从最近错误提交起，完成3个不同其他目标单词的有效提交（普通或纠错）后重测，作为普通sibling例外。只能使用同task本会话未作答的不同form；仅洗牌或换version不是新形式，纠错本身不推进普通冷却计数。
 
 若没有合格替代形式，本轮保留待复习标记并请求离线补充内容，不密集循环原形式。不同形式难度可能变化，纠错成功仍只作为反馈后的证据。
 

@@ -1,0 +1,1055 @@
+{
+  "version": "1.0.0",
+  "dataset_name": "production-quality-benchmark-v1",
+  "summary": {
+    "total_cases": 45,
+    "negative_cases": 30,
+    "positive_cases": 15,
+    "negative_categories": [
+      "wrong_meaning",
+      "multiple_answers",
+      "no_answer",
+      "answer_conflict",
+      "explanation_conflict",
+      "distractor_conflict"
+    ],
+    "cases_per_negative_category": 5
+  },
+  "cases": [
+    {
+      "id": "NEG-WM-01",
+      "category": "wrong_meaning",
+      "expected_verdict": "reject",
+      "ground_truth_reason": "目标词abandon的词义是放弃，但答案键标记赞同为正确选项，释义完全相反。",
+      "fixed_input": {
+        "canonical_form": "abandon",
+        "part_of_speech": "verb",
+        "target_meaning": "放弃，抛弃",
+        "required_task_families": ["meaning_recognition"]
+      },
+      "candidate_content": {
+        "task_family": "meaning_recognition",
+        "stem": "What is the meaning of the word 'abandon'?",
+        "options": [
+          {"id": "opt-1", "text": "放弃，舍弃", "is_correct": false, "explanation": "干扰项"},
+          {"id": "opt-2", "text": "赞同，支持", "is_correct": true, "explanation": "正确选项"},
+          {"id": "opt-3", "text": "建造，建立", "is_correct": false, "explanation": "干扰项"},
+          {"id": "opt-4", "text": "维持，保持", "is_correct": false, "explanation": "干扰项"}
+        ],
+        "explanation": "abandon 意为赞同。"
+      }
+    },
+    {
+      "id": "NEG-WM-02",
+      "category": "wrong_meaning",
+      "expected_verdict": "reject",
+      "ground_truth_reason": "目标词reluctant的词义是不情愿的，但答案键指向极其兴奋的，词义严重错位。",
+      "fixed_input": {
+        "canonical_form": "reluctant",
+        "part_of_speech": "adj",
+        "target_meaning": "不情愿的，勉强的",
+        "required_task_families": ["meaning_recognition"]
+      },
+      "candidate_content": {
+        "task_family": "meaning_recognition",
+        "stem": "Choose the correct Chinese meaning for 'reluctant':",
+        "options": [
+          {"id": "opt-1", "text": "极其兴奋的", "is_correct": true, "explanation": "正确选项"},
+          {"id": "opt-2", "text": "冷静沉着的", "is_correct": false, "explanation": "干扰项"},
+          {"id": "opt-3", "text": "坚决果断的", "is_correct": false, "explanation": "干扰项"},
+          {"id": "opt-4", "text": "漫不经心的", "is_correct": false, "explanation": "干扰项"}
+        ],
+        "explanation": "reluctant 表示极其兴奋。"
+      }
+    },
+    {
+      "id": "NEG-WM-03",
+      "category": "wrong_meaning",
+      "expected_verdict": "reject",
+      "ground_truth_reason": "目标词diminish词义为减少，但答案键指向大幅增加，语义颠倒。",
+      "fixed_input": {
+        "canonical_form": "diminish",
+        "part_of_speech": "verb",
+        "target_meaning": "减少，变小",
+        "required_task_families": ["meaning_recognition"]
+      },
+      "candidate_content": {
+        "task_family": "meaning_recognition",
+        "stem": "What is the meaning of 'diminish'?",
+        "options": [
+          {"id": "opt-1", "text": "大幅增加", "is_correct": true, "explanation": "正确选项"},
+          {"id": "opt-2", "text": "保持稳定", "is_correct": false, "explanation": "干扰项"},
+          {"id": "opt-3", "text": "突然中断", "is_correct": false, "explanation": "干扰项"},
+          {"id": "opt-4", "text": "永久消失", "is_correct": false, "explanation": "干扰项"}
+        ],
+        "explanation": "diminish 意为大幅增加。"
+      }
+    },
+    {
+      "id": "NEG-WM-04",
+      "category": "wrong_meaning",
+      "expected_verdict": "reject",
+      "ground_truth_reason": "目标词genuine的词义是真正的、真诚的，但答案键指向虚伪造假的。",
+      "fixed_input": {
+        "canonical_form": "genuine",
+        "part_of_speech": "adj",
+        "target_meaning": "真正的，真诚的",
+        "required_task_families": ["meaning_recognition"]
+      },
+      "candidate_content": {
+        "task_family": "meaning_recognition",
+        "stem": "Select the meaning of 'genuine':",
+        "options": [
+          {"id": "opt-1", "text": "虚假造作的", "is_correct": true, "explanation": "正确选项"},
+          {"id": "opt-2", "text": "昂贵稀有的", "is_correct": false, "explanation": "干扰项"},
+          {"id": "opt-3", "text": "普遍常见的", "is_correct": false, "explanation": "干扰项"},
+          {"id": "opt-4", "text": "暂时借用的", "is_correct": false, "explanation": "干扰项"}
+        ],
+        "explanation": "genuine 表示假冒伪劣。"
+      }
+    },
+    {
+      "id": "NEG-WM-05",
+      "category": "wrong_meaning",
+      "expected_verdict": "reject",
+      "ground_truth_reason": "目标词hostile词义为敌对的不友善的，答案键指向热情友好的，含义相反。",
+      "fixed_input": {
+        "canonical_form": "hostile",
+        "part_of_speech": "adj",
+        "target_meaning": "敌对的，不友好的",
+        "required_task_families": ["meaning_recognition"]
+      },
+      "candidate_content": {
+        "task_family": "meaning_recognition",
+        "stem": "What does 'hostile' mean?",
+        "options": [
+          {"id": "opt-1", "text": "热情亲切的", "is_correct": true, "explanation": "正确选项"},
+          {"id": "opt-2", "text": "沉默寡言的", "is_correct": false, "explanation": "干扰项"},
+          {"id": "opt-3", "text": "小心翼翼的", "is_correct": false, "explanation": "干扰项"},
+          {"id": "opt-4", "text": "优柔寡断的", "is_correct": false, "explanation": "干扰项"}
+        ],
+        "explanation": "hostile 意为充满热情。"
+      }
+    },
+    {
+      "id": "NEG-MA-01",
+      "category": "multiple_answers",
+      "expected_verdict": "reject",
+      "ground_truth_reason": "语境句子过于宽泛，car、bicycle、truck三个选项均完全符合句法语义，存在多个正确解。",
+      "fixed_input": {
+        "canonical_form": "vehicle",
+        "part_of_speech": "noun",
+        "target_meaning": "车辆，交通工具",
+        "required_task_families": ["context_selection"]
+      },
+      "candidate_content": {
+        "task_family": "context_selection",
+        "stem": "He bought a new ___ yesterday to commute to work.",
+        "options": [
+          {"id": "opt-1", "text": "car", "is_correct": true, "explanation": "正确选项"},
+          {"id": "opt-2", "text": "bicycle", "is_correct": false, "explanation": "自行车也能通勤，同样正确"},
+          {"id": "opt-3", "text": "motorcycle", "is_correct": false, "explanation": "摩托车也能通勤，同样正确"},
+          {"id": "opt-4", "text": "cloud", "is_correct": false, "explanation": "错误干扰项"}
+        ],
+        "explanation": "句中只有 car 算交通工具。"
+      }
+    },
+    {
+      "id": "NEG-MA-02",
+      "category": "multiple_answers",
+      "expected_verdict": "reject",
+      "ground_truth_reason": "喝的饮品语境过于泛化，water、juice、milk均能正确填入，无法锁定唯一答案。",
+      "fixed_input": {
+        "canonical_form": "beverage",
+        "part_of_speech": "noun",
+        "target_meaning": "饮料",
+        "required_task_families": ["context_selection"]
+      },
+      "candidate_content": {
+        "task_family": "context_selection",
+        "stem": "After the long run, she drank a refreshing glass of ___.",
+        "options": [
+          {"id": "opt-1", "text": "water", "is_correct": true, "explanation": "水"},
+          {"id": "opt-2", "text": "juice", "is_correct": false, "explanation": "果汁同样完全合理"},
+          {"id": "opt-3", "text": "milk", "is_correct": false, "explanation": "牛奶同样完全合理"},
+          {"id": "opt-4", "text": "stone", "is_correct": false, "explanation": "不可喝"}
+        ],
+        "explanation": "本题唯有 water 正确。"
+      }
+    },
+    {
+      "id": "NEG-MA-03",
+      "category": "multiple_answers",
+      "expected_verdict": "reject",
+      "ground_truth_reason": "买水果吃，apple、banana、orange在句中完全等价并合乎逻辑，选项多解。",
+      "fixed_input": {
+        "canonical_form": "fruit",
+        "part_of_speech": "noun",
+        "target_meaning": "水果",
+        "required_task_families": ["context_selection"]
+      },
+      "candidate_content": {
+        "task_family": "context_selection",
+        "stem": "She went to the supermarket and bought a ripe ___ for breakfast.",
+        "options": [
+          {"id": "opt-1", "text": "banana", "is_correct": true, "explanation": "香蕉"},
+          {"id": "opt-2", "text": "pear", "is_correct": false, "explanation": "梨也是成熟的水果"},
+          {"id": "opt-3", "text": "mango", "is_correct": false, "explanation": "芒果也是成熟的水果"},
+          {"id": "opt-4", "text": "paper", "is_correct": false, "explanation": "纸张"}
+        ],
+        "explanation": "只有 banana 正确。"
+      }
+    },
+    {
+      "id": "NEG-MA-04",
+      "category": "multiple_answers",
+      "expected_verdict": "reject",
+      "ground_truth_reason": "冬日穿衣服语境，coat、jacket、sweater皆为合理保暖衣物，存在多解。",
+      "fixed_input": {
+        "canonical_form": "coat",
+        "part_of_speech": "noun",
+        "target_meaning": "外套，大衣",
+        "required_task_families": ["context_selection"]
+      },
+      "candidate_content": {
+        "task_family": "context_selection",
+        "stem": "Before stepping outside into the snow, he put on a thick warm ___.",
+        "options": [
+          {"id": "opt-1", "text": "coat", "is_correct": true, "explanation": "大衣"},
+          {"id": "opt-2", "text": "jacket", "is_correct": false, "explanation": "夹克完全符合语境"},
+          {"id": "opt-3", "text": "sweater", "is_correct": false, "explanation": "毛衣完全符合语境"},
+          {"id": "opt-4", "text": "curtain", "is_correct": false, "explanation": "窗帘"}
+        ],
+        "explanation": "雪地里只能穿 coat。"
+      }
+    },
+    {
+      "id": "NEG-MA-05",
+      "category": "multiple_answers",
+      "expected_verdict": "reject",
+      "ground_truth_reason": "购买家具放客厅，sofa与couch是完全同义的词，两者皆可填入，无唯一答案。",
+      "fixed_input": {
+        "canonical_form": "furniture",
+        "part_of_speech": "noun",
+        "target_meaning": "家具",
+        "required_task_families": ["context_selection"]
+      },
+      "candidate_content": {
+        "task_family": "context_selection",
+        "stem": "They decided to buy a comfortable leather ___ for the living room.",
+        "options": [
+          {"id": "opt-1", "text": "sofa", "is_correct": true, "explanation": "沙发"},
+          {"id": "opt-2", "text": "couch", "is_correct": false, "explanation": "couch就是sofa，完全等效"},
+          {"id": "opt-3", "text": "chair", "is_correct": false, "explanation": "皮革扶手椅也合理"},
+          {"id": "opt-4", "text": "fork", "is_correct": false, "explanation": "餐叉"}
+        ],
+        "explanation": "只有 sofa 正确。"
+      }
+    },
+    {
+      "id": "NEG-NA-01",
+      "category": "no_answer",
+      "expected_verdict": "reject",
+      "ground_truth_reason": "题干句子时态语法严重错乱(The committee are been ___ a decision yesterday)，且选项中无一符合过去完成/一般过去分词要求，此题无解。",
+      "fixed_input": {
+        "canonical_form": "reach",
+        "part_of_speech": "verb",
+        "target_meaning": "达成，达到",
+        "required_task_families": ["context_selection"]
+      },
+      "candidate_content": {
+        "task_family": "context_selection",
+        "stem": "The committee are been ___ a decision yesterday.",
+        "options": [
+          {"id": "opt-1", "text": "reach", "is_correct": true, "explanation": "语法错误"},
+          {"id": "opt-2", "text": "reaches", "is_correct": false, "explanation": "第三人称单数不合句式"},
+          {"id": "opt-3", "text": "reaching", "is_correct": false, "explanation": "不能与 are been 搭配"},
+          {"id": "opt-4", "text": "to reach", "is_correct": false, "explanation": "不定式不合句式"}
+        ],
+        "explanation": "此句语法本身无解。"
+      }
+    },
+    {
+      "id": "NEG-NA-02",
+      "category": "no_answer",
+      "expected_verdict": "reject",
+      "ground_truth_reason": "insisted 要求接介词 on，但四个选项全部为错误介词，导致句子无任何正确答案可填。",
+      "fixed_input": {
+        "canonical_form": "insist",
+        "part_of_speech": "verb",
+        "target_meaning": "坚持要求",
+        "required_task_families": ["context_selection"]
+      },
+      "candidate_content": {
+        "task_family": "context_selection",
+        "stem": "He insisted ___ leaving the hotel at once.",
+        "options": [
+          {"id": "opt-1", "text": "at", "is_correct": true, "explanation": "insist 不能接 at，标错"},
+          {"id": "opt-2", "text": "for", "is_correct": false, "explanation": "错误介词"},
+          {"id": "opt-3", "text": "to", "is_correct": false, "explanation": "错误介词"},
+          {"id": "opt-4", "text": "with", "is_correct": false, "explanation": "错误介词"}
+        ],
+        "explanation": "insist 接 on，题中无 on，答案强行标记 at。"
+      }
+    },
+    {
+      "id": "NEG-NA-03",
+      "category": "no_answer",
+      "expected_verdict": "reject",
+      "ground_truth_reason": "空缺处前为His sudden，需要接名词，但四个选项全为动词原形或分词，无名词，题目无解。",
+      "fixed_input": {
+        "canonical_form": "departure",
+        "part_of_speech": "noun",
+        "target_meaning": "离开，出发",
+        "required_task_families": ["context_selection"]
+      },
+      "candidate_content": {
+        "task_family": "context_selection",
+        "stem": "His sudden ___ surprised everyone in the office.",
+        "options": [
+          {"id": "opt-1", "text": "depart", "is_correct": true, "explanation": "depart为动词，不能做主语"},
+          {"id": "opt-2", "text": "leave", "is_correct": false, "explanation": "动词原形"},
+          {"id": "opt-3", "text": "went", "is_correct": false, "explanation": "过去式"},
+          {"id": "opt-4", "text": "arrived", "is_correct": false, "explanation": "动词过去式"}
+        ],
+        "explanation": "需要名词 departure，选项中无名词。"
+      }
+    },
+    {
+      "id": "NEG-NA-04",
+      "category": "no_answer",
+      "expected_verdict": "reject",
+      "ground_truth_reason": "句子结构缺少谓语动词，但选项全为形容词，填入任何选项均无法构成合法的英文句子。",
+      "fixed_input": {
+        "canonical_form": "flourish",
+        "part_of_speech": "verb",
+        "target_meaning": "繁荣，兴旺",
+        "required_task_families": ["context_selection"]
+      },
+      "candidate_content": {
+        "task_family": "context_selection",
+        "stem": "The ancient trade routes across the continent ___ rapidly during that peaceful era.",
+        "options": [
+          {"id": "opt-1", "text": "prosperous", "is_correct": true, "explanation": "形容词不能作句子的谓语"},
+          {"id": "opt-2", "text": "wealthy", "is_correct": false, "explanation": "形容词"},
+          {"id": "opt-3", "text": "rich", "is_correct": false, "explanation": "形容词"},
+          {"id": "opt-4", "text": "fertile", "is_correct": false, "explanation": "形容词"}
+        ],
+        "explanation": "全为形容词，缺少谓语动词 flourished。"
+      }
+    },
+    {
+      "id": "NEG-NA-05",
+      "category": "no_answer",
+      "expected_verdict": "reject",
+      "ground_truth_reason": "题干是选择反义词，但设问与选项均为近义词且互相矛盾，题干要求选'迟钝'却四个都是'敏捷'。",
+      "fixed_input": {
+        "canonical_form": "acute",
+        "part_of_speech": "adj",
+        "target_meaning": "敏锐的，急性的",
+        "required_task_families": ["reverse_selection"]
+      },
+      "candidate_content": {
+        "task_family": "reverse_selection",
+        "stem": "请选择表示'迟钝呆滞'的英语单词：",
+        "options": [
+          {"id": "opt-1", "text": "acute", "is_correct": true, "explanation": "acute是敏锐的，与题干完全冲突"},
+          {"id": "opt-2", "text": "sharp", "is_correct": false, "explanation": "锋利敏锐"},
+          {"id": "opt-3", "text": "keen", "is_correct": false, "explanation": "热切敏锐"},
+          {"id": "opt-4", "text": "clever", "is_correct": false, "explanation": "聪明"}
+        ],
+        "explanation": "无迟钝 dull/slow 选项，题干与所有选项矛盾。"
+      }
+    },
+    {
+      "id": "NEG-AC-01",
+      "category": "answer_conflict",
+      "expected_verdict": "reject",
+      "ground_truth_reason": "Eating fresh vegetables is beneficial to health，正确答案应为 beneficial，但答案键标记了有害的 harmful 为正确，属于标错答案键。",
+      "fixed_input": {
+        "canonical_form": "beneficial",
+        "part_of_speech": "adj",
+        "target_meaning": "有益的，有帮助的",
+        "required_task_families": ["context_selection"]
+      },
+      "candidate_content": {
+        "task_family": "context_selection",
+        "stem": "Eating fresh vegetables and exercising daily is ___ to your overall health.",
+        "options": [
+          {"id": "opt-1", "text": "harmful", "is_correct": true, "explanation": "标为正确，但常识与语境为有害"},
+          {"id": "opt-2", "text": "beneficial", "is_correct": false, "explanation": "真正正确的选项却标为错误"},
+          {"id": "opt-3", "text": "hazardous", "is_correct": false, "explanation": "危险的"},
+          {"id": "opt-4", "text": "toxic", "is_correct": false, "explanation": "有毒的"}
+        ],
+        "explanation": "标错了答案，把 harmful 标成了正确选项。"
+      }
+    },
+    {
+      "id": "NEG-AC-02",
+      "category": "answer_conflict",
+      "expected_verdict": "reject",
+      "ground_truth_reason": "题目要求选择'谨慎的'对应单词，cautious才是正确答案，但答案键却标记了粗心鲁莽的 reckless 为正确答案。",
+      "fixed_input": {
+        "canonical_form": "cautious",
+        "part_of_speech": "adj",
+        "target_meaning": "谨慎的，小心的",
+        "required_task_families": ["reverse_selection"]
+      },
+      "candidate_content": {
+        "task_family": "reverse_selection",
+        "stem": "请选择表示'谨慎的小心的'的英文单词：",
+        "options": [
+          {"id": "opt-1", "text": "reckless", "is_correct": true, "explanation": "鲁莽的，标错答案"},
+          {"id": "opt-2", "text": "cautious", "is_correct": false, "explanation": "谨慎的，实际正确却标错"},
+          {"id": "opt-3", "text": "careless", "is_correct": false, "explanation": "粗心的"},
+          {"id": "opt-4", "text": "hasty", "is_correct": false, "explanation": "仓促的"}
+        ],
+        "explanation": "答案标为 reckless，答案键颠倒。"
+      }
+    },
+    {
+      "id": "NEG-AC-03",
+      "category": "answer_conflict",
+      "expected_verdict": "reject",
+      "ground_truth_reason": "公司业务向海外扩展应选 expand，但答案键却标记收缩 shrink 为正确选项，答案键与题意冲突。",
+      "fixed_input": {
+        "canonical_form": "expand",
+        "part_of_speech": "verb",
+        "target_meaning": "扩大，拓展",
+        "required_task_families": ["context_selection"]
+      },
+      "candidate_content": {
+        "task_family": "context_selection",
+        "stem": "The ambitious technology company plans to ___ its operations overseas next year.",
+        "options": [
+          {"id": "opt-1", "text": "shrink", "is_correct": true, "explanation": "收缩，答案标错"},
+          {"id": "opt-2", "text": "expand", "is_correct": false, "explanation": "扩张，真答案却未标记"},
+          {"id": "opt-3", "text": "collapse", "is_correct": false, "explanation": "崩溃"},
+          {"id": "opt-4", "text": "terminate", "is_correct": false, "explanation": "终止"}
+        ],
+        "explanation": "答案键标成了 shrink。"
+      }
+    },
+    {
+      "id": "NEG-AC-04",
+      "category": "answer_conflict",
+      "expected_verdict": "reject",
+      "ground_truth_reason": "目标词plentiful词义为丰富充裕的，真正选项B被标为假，而匮乏短缺的选项A被标为真。",
+      "fixed_input": {
+        "canonical_form": "plentiful",
+        "part_of_speech": "adj",
+        "target_meaning": "丰富的，充足的",
+        "required_task_families": ["meaning_recognition"]
+      },
+      "candidate_content": {
+        "task_family": "meaning_recognition",
+        "stem": "What is the meaning of the adjective 'plentiful'?",
+        "options": [
+          {"id": "opt-1", "text": "匮乏短缺的", "is_correct": true, "explanation": "错误释义被标为正确"},
+          {"id": "opt-2", "text": "丰富充足的", "is_correct": false, "explanation": "正确释义却被标为错误"},
+          {"id": "opt-3", "text": "极其罕见的", "is_correct": false, "explanation": "干扰项"},
+          {"id": "opt-4", "text": "毫无价值的", "is_correct": false, "explanation": "干扰项"}
+        ],
+        "explanation": "答案键标记了相反选项。"
+      }
+    },
+    {
+      "id": "NEG-AC-05",
+      "category": "answer_conflict",
+      "expected_verdict": "reject",
+      "ground_truth_reason": "数个世纪未喷发说明火山是休眠的 dormant，但答案键标记 active 为正确选项，答案键与后半句无喷发迹象直接冲突。",
+      "fixed_input": {
+        "canonical_form": "dormant",
+        "part_of_speech": "adj",
+        "target_meaning": "休眠的，静止的",
+        "required_task_families": ["context_selection"]
+      },
+      "candidate_content": {
+        "task_family": "context_selection",
+        "stem": "The volcano has remained ___ for centuries, showing no signs of any upcoming eruption.",
+        "options": [
+          {"id": "opt-1", "text": "active", "is_correct": true, "explanation": "活跃的，与题干冲突"},
+          {"id": "opt-2", "text": "dormant", "is_correct": false, "explanation": "休眠的，真正答案标错"},
+          {"id": "opt-3", "text": "violent", "is_correct": false, "explanation": "剧烈的"},
+          {"id": "opt-4", "text": "erupting", "is_correct": false, "explanation": "正在喷发的"}
+        ],
+        "explanation": "答案键被标成了 active，与语境相反。"
+      }
+    },
+    {
+      "id": "NEG-EC-01",
+      "category": "explanation_conflict",
+      "expected_verdict": "reject",
+      "ground_truth_reason": "答案键选了易碎的，但解析正文声称fragile是极其坚固耐用所以选它，解析与选项含义严重自相矛盾。",
+      "fixed_input": {
+        "canonical_form": "fragile",
+        "part_of_speech": "adj",
+        "target_meaning": "易碎的，脆弱的",
+        "required_task_families": ["meaning_recognition"]
+      },
+      "candidate_content": {
+        "task_family": "meaning_recognition",
+        "stem": "What is the meaning of 'fragile'?",
+        "options": [
+          {"id": "opt-1", "text": "易碎的，脆弱的", "is_correct": true, "explanation": "选项A"},
+          {"id": "opt-2", "text": "坚固耐用的", "is_correct": false, "explanation": "选项B"},
+          {"id": "opt-3", "text": "沉重坚硬的", "is_correct": false, "explanation": "选项C"},
+          {"id": "opt-4", "text": "极其柔软的", "is_correct": false, "explanation": "选项D"}
+        ],
+        "explanation": "fragile 意为极其坚固耐用、刀枪不入，因此本题选择易碎的。"
+      }
+    },
+    {
+      "id": "NEG-EC-02",
+      "category": "explanation_conflict",
+      "expected_verdict": "reject",
+      "ground_truth_reason": "题干要求选择延期推迟，选了postpone，但解析称postpone是马上开始、绝无推迟之意，解析产生矛盾。",
+      "fixed_input": {
+        "canonical_form": "postpone",
+        "part_of_speech": "verb",
+        "target_meaning": "推迟，延期",
+        "required_task_families": ["reverse_selection"]
+      },
+      "candidate_content": {
+        "task_family": "reverse_selection",
+        "stem": "请选择表示'推迟，延期'的单词：",
+        "options": [
+          {"id": "opt-1", "text": "postpone", "is_correct": true, "explanation": "正确词"},
+          {"id": "opt-2", "text": "advance", "is_correct": false, "explanation": "提前"},
+          {"id": "opt-3", "text": "accelerate", "is_correct": false, "explanation": "加速"},
+          {"id": "opt-4", "text": "commence", "is_correct": false, "explanation": "开始"}
+        ],
+        "explanation": "postpone 意为立即着手进行某事，绝不可表示延期，故答案选 postpone。"
+      }
+    },
+    {
+      "id": "NEG-EC-03",
+      "category": "explanation_conflict",
+      "expected_verdict": "reject",
+      "ground_truth_reason": "答案项勾选了 panic，但解析文字却写着'正确答案是 calm，因为动物听到巨响非常镇静'，解析与选项答案键打架。",
+      "fixed_input": {
+        "canonical_form": "panic",
+        "part_of_speech": "noun",
+        "target_meaning": "恐慌，惊慌",
+        "required_task_families": ["context_selection"]
+      },
+      "candidate_content": {
+        "task_family": "context_selection",
+        "stem": "The sudden loud thunderclap caused an immediate ___ among the horses.",
+        "options": [
+          {"id": "opt-1", "text": "panic", "is_correct": true, "explanation": "恐慌"},
+          {"id": "opt-2", "text": "calm", "is_correct": false, "explanation": "平静"},
+          {"id": "opt-3", "text": "silence", "is_correct": false, "explanation": "寂静"},
+          {"id": "opt-4", "text": "pleasure", "is_correct": false, "explanation": "愉悦"}
+        ],
+        "explanation": "正确选项为 calm，雷声让马匹感到安详宁静，所以选 panic。"
+      }
+    },
+    {
+      "id": "NEG-EC-04",
+      "category": "explanation_conflict",
+      "expected_verdict": "reject",
+      "ground_truth_reason": "答案选了缺乏罕见的，但解析把scarce定义为取之不尽用之不竭，解析完全反转定义。",
+      "fixed_input": {
+        "canonical_form": "scarce",
+        "part_of_speech": "adj",
+        "target_meaning": "缺乏的，罕见的",
+        "required_task_families": ["meaning_recognition"]
+      },
+      "candidate_content": {
+        "task_family": "meaning_recognition",
+        "stem": "What is the meaning of 'scarce'?",
+        "options": [
+          {"id": "opt-1", "text": "缺乏的，罕见的", "is_correct": true, "explanation": "正确选项"},
+          {"id": "opt-2", "text": "极其丰富的", "is_correct": false, "explanation": "干扰项"},
+          {"id": "opt-3", "text": "普遍存在的", "is_correct": false, "explanation": "干扰项"},
+          {"id": "opt-4", "text": "多余过剩的", "is_correct": false, "explanation": "干扰项"}
+        ],
+        "explanation": "scarce 意为取之不尽、用之不竭、极大富余，故应选择缺乏罕见的。"
+      }
+    },
+    {
+      "id": "NEG-EC-05",
+      "category": "explanation_conflict",
+      "expected_verdict": "reject",
+      "ground_truth_reason": "正确答案选了 reluctant (勉强的)，解析却声称该词代表迫不及待、满心欢喜，自相矛盾。",
+      "fixed_input": {
+        "canonical_form": "reluctant",
+        "part_of_speech": "adj",
+        "target_meaning": "勉强的，不情愿的",
+        "required_task_families": ["context_selection"]
+      },
+      "candidate_content": {
+        "task_family": "context_selection",
+        "stem": "He was ___ to admit that his ambitious calculation had completely failed.",
+        "options": [
+          {"id": "opt-1", "text": "reluctant", "is_correct": true, "explanation": "不情愿的"},
+          {"id": "opt-2", "text": "eager", "is_correct": false, "explanation": "渴望的"},
+          {"id": "opt-3", "text": "willing", "is_correct": false, "explanation": "乐意的"},
+          {"id": "opt-4", "text": "thrilled", "is_correct": false, "explanation": "激动的"}
+        ],
+        "explanation": "reluctant 表示迫不及待、心甘情愿、满心欢喜，因此填入 reluctant。"
+      }
+    },
+    {
+      "id": "NEG-DC-01",
+      "category": "distractor_conflict",
+      "expected_verdict": "reject",
+      "ground_truth_reason": "干扰项'买入'、'采购'与正确答案'购买'在中文语境下是完全等价的近义词，干扰项与正解重叠造成多解争议。",
+      "fixed_input": {
+        "canonical_form": "purchase",
+        "part_of_speech": "verb",
+        "target_meaning": "购买，采购",
+        "required_task_families": ["meaning_recognition"]
+      },
+      "candidate_content": {
+        "task_family": "meaning_recognition",
+        "stem": "What is the meaning of 'purchase'?",
+        "options": [
+          {"id": "opt-1", "text": "购买", "is_correct": true, "explanation": "正解"},
+          {"id": "opt-2", "text": "买入", "is_correct": false, "explanation": "买入与购买完全同义"},
+          {"id": "opt-3", "text": "采购", "is_correct": false, "explanation": "采购也是 purchase 词义"},
+          {"id": "opt-4", "text": "抛售", "is_correct": false, "explanation": "卖出"}
+        ],
+        "explanation": "purchase 是购买，但选项A、B、C全是同义词。"
+      }
+    },
+    {
+      "id": "NEG-DC-02",
+      "category": "distractor_conflict",
+      "expected_verdict": "reject",
+      "ground_truth_reason": "题干选择'快速的'，选项中的 quick, rapid, swift 三者皆为完全标准的同义词，干扰项与正解无有效区分度。",
+      "fixed_input": {
+        "canonical_form": "rapid",
+        "part_of_speech": "adj",
+        "target_meaning": "快速的，迅速的",
+        "required_task_families": ["reverse_selection"]
+      },
+      "candidate_content": {
+        "task_family": "reverse_selection",
+        "stem": "请选择表示'快速的，迅速的'的英文单词：",
+        "options": [
+          {"id": "opt-1", "text": "rapid", "is_correct": true, "explanation": "正解"},
+          {"id": "opt-2", "text": "quick", "is_correct": false, "explanation": "quick也是快速的"},
+          {"id": "opt-3", "text": "swift", "is_correct": false, "explanation": "swift也是快速的"},
+          {"id": "opt-4", "text": "gradual", "is_correct": false, "explanation": "缓慢的"}
+        ],
+        "explanation": "quick 和 swift 与 rapid 含义重合。"
+      }
+    },
+    {
+      "id": "NEG-DC-03",
+      "category": "distractor_conflict",
+      "expected_verdict": "reject",
+      "ground_truth_reason": "巨大的，enormous 与 gigantic, colossal 均为绝对同义词，三个英文干扰项含义重叠。",
+      "fixed_input": {
+        "canonical_form": "enormous",
+        "part_of_speech": "adj",
+        "target_meaning": "巨大的，庞大的",
+        "required_task_families": ["reverse_selection"]
+      },
+      "candidate_content": {
+        "task_family": "reverse_selection",
+        "stem": "请选择表示'庞大的，巨大的'的单词：",
+        "options": [
+          {"id": "opt-1", "text": "enormous", "is_correct": true, "explanation": "正解"},
+          {"id": "opt-2", "text": "gigantic", "is_correct": false, "explanation": "也是巨大的"},
+          {"id": "opt-3", "text": "colossal", "is_correct": false, "explanation": "也是巨大的"},
+          {"id": "opt-4", "text": "minute", "is_correct": false, "explanation": "微小的"}
+        ],
+        "explanation": "多个选项都是巨大的意思。"
+      }
+    },
+    {
+      "id": "NEG-DC-04",
+      "category": "distractor_conflict",
+      "expected_verdict": "reject",
+      "ground_truth_reason": "每年举行的活动，annual 和 yearly 填入该句中完全合法且含义毫无差别，干扰项与正解冲突。",
+      "fixed_input": {
+        "canonical_form": "annual",
+        "part_of_speech": "adj",
+        "target_meaning": "每年的，年度的",
+        "required_task_families": ["context_selection"]
+      },
+      "candidate_content": {
+        "task_family": "context_selection",
+        "stem": "The university hosts an ___ international academic symposium every October.",
+        "options": [
+          {"id": "opt-1", "text": "annual", "is_correct": true, "explanation": "年度的"},
+          {"id": "opt-2", "text": "yearly", "is_correct": false, "explanation": "yearly也是每年的，语法语义完全一致"},
+          {"id": "opt-3", "text": "weekly", "is_correct": false, "explanation": "每周的"},
+          {"id": "opt-4", "text": "daily", "is_correct": false, "explanation": "每日的"}
+        ],
+        "explanation": "yearly 与 annual 在此句中完全等同。"
+      }
+    },
+    {
+      "id": "NEG-DC-05",
+      "category": "distractor_conflict",
+      "expected_verdict": "reject",
+      "ground_truth_reason": "smart 释义，聪明的、机智的、伶俐的在中文中全部是该词的有效释义，干扰项与正解语义重叠混淆。",
+      "fixed_input": {
+        "canonical_form": "smart",
+        "part_of_speech": "adj",
+        "target_meaning": "聪明的，机灵的",
+        "required_task_families": ["meaning_recognition"]
+      },
+      "candidate_content": {
+        "task_family": "meaning_recognition",
+        "stem": "What is the meaning of the word 'smart'?",
+        "options": [
+          {"id": "opt-1", "text": "聪明的", "is_correct": true, "explanation": "正解"},
+          {"id": "opt-2", "text": "机智灵巧的", "is_correct": false, "explanation": "机智灵巧也是smart的含义"},
+          {"id": "opt-3", "text": "伶俐敏捷的", "is_correct": false, "explanation": "同样是smart的含义"},
+          {"id": "opt-4", "text": "愚笨迟钝的", "is_correct": false, "explanation": "反义词"}
+        ],
+        "explanation": "前三个选项在中文里完全无法有效区分。"
+      }
+    },
+    {
+      "id": "POS-MR-01",
+      "category": "positive",
+      "expected_verdict": "pass",
+      "ground_truth_reason": "abundant释义大量充裕准确，干扰项贫乏/微弱/犹豫界限分明，题目标准且无歧义。",
+      "fixed_input": {
+        "canonical_form": "abundant",
+        "part_of_speech": "adj",
+        "target_meaning": "大量的，充裕的",
+        "required_task_families": ["meaning_recognition"]
+      },
+      "candidate_content": {
+        "task_family": "meaning_recognition",
+        "stem": "What is the primary meaning of the word 'abundant'?",
+        "options": [
+          {"id": "opt-1", "text": "大量的，充裕的", "is_correct": true, "explanation": "正确释义"},
+          {"id": "opt-2", "text": "极其匮乏的", "is_correct": false, "explanation": "反义干扰"},
+          {"id": "opt-3", "text": "犹豫不决的", "is_correct": false, "explanation": "无关形容词"},
+          {"id": "opt-4", "text": "微弱模糊的", "is_correct": false, "explanation": "无关形容词"}
+        ],
+        "explanation": "abundant 意为大量的、丰富的，答案选A。"
+      }
+    },
+    {
+      "id": "POS-MR-02",
+      "category": "positive",
+      "expected_verdict": "pass",
+      "ground_truth_reason": "compulsory释义强制必修准确，干扰项自愿/暂定/无意义界限分明，唯一正解。",
+      "fixed_input": {
+        "canonical_form": "compulsory",
+        "part_of_speech": "adj",
+        "target_meaning": "强制的，必修的",
+        "required_task_families": ["meaning_recognition"]
+      },
+      "candidate_content": {
+        "task_family": "meaning_recognition",
+        "stem": "Choose the correct meaning of 'compulsory':",
+        "options": [
+          {"id": "opt-1", "text": "强制的，必修的", "is_correct": true, "explanation": "正确释义"},
+          {"id": "opt-2", "text": "自愿选择的", "is_correct": false, "explanation": "反义干扰"},
+          {"id": "opt-3", "text": "临时暂定的", "is_correct": false, "explanation": "无关干扰"},
+          {"id": "opt-4", "text": "毫无意义的", "is_correct": false, "explanation": "无关干扰"}
+        ],
+        "explanation": "compulsory 意为必须做的、强制性的、必修的。"
+      }
+    },
+    {
+      "id": "POS-MR-03",
+      "category": "positive",
+      "expected_verdict": "pass",
+      "ground_truth_reason": "dilemma释义进退两难困境准确，选项间区分度高，题干自然。",
+      "fixed_input": {
+        "canonical_form": "dilemma",
+        "part_of_speech": "noun",
+        "target_meaning": "进退两难的困境",
+        "required_task_families": ["meaning_recognition"]
+      },
+      "candidate_content": {
+        "task_family": "meaning_recognition",
+        "stem": "What is the meaning of the noun 'dilemma'?",
+        "options": [
+          {"id": "opt-1", "text": "进退两难的困境", "is_correct": true, "explanation": "正确释义"},
+          {"id": "opt-2", "text": "极其辉煌的胜利", "is_correct": false, "explanation": "干扰项"},
+          {"id": "opt-3", "text": "漫长艰险的旅行", "is_correct": false, "explanation": "干扰项"},
+          {"id": "opt-4", "text": "意外天赐的良机", "is_correct": false, "explanation": "干扰项"}
+        ],
+        "explanation": "dilemma 意为窘境、左右为难的困境。"
+      }
+    },
+    {
+      "id": "POS-MR-04",
+      "category": "positive",
+      "expected_verdict": "pass",
+      "ground_truth_reason": "eliminate释义消除排除明确，动词词性一致，干扰项区分明确。",
+      "fixed_input": {
+        "canonical_form": "eliminate",
+        "part_of_speech": "verb",
+        "target_meaning": "消除，排除，淘汰",
+        "required_task_families": ["meaning_recognition"]
+      },
+      "candidate_content": {
+        "task_family": "meaning_recognition",
+        "stem": "Select the correct Chinese translation for 'eliminate':",
+        "options": [
+          {"id": "opt-1", "text": "消除，彻底排除", "is_correct": true, "explanation": "正确释义"},
+          {"id": "opt-2", "text": "增加，持续补充", "is_correct": false, "explanation": "反义干扰"},
+          {"id": "opt-3", "text": "模仿，机械照搬", "is_correct": false, "explanation": "无关干扰"},
+          {"id": "opt-4", "text": "保护，悉心照料", "is_correct": false, "explanation": "无关干扰"}
+        ],
+        "explanation": "eliminate 意为排除、消除或淘汰。"
+      }
+    },
+    {
+      "id": "POS-MR-05",
+      "category": "positive",
+      "expected_verdict": "pass",
+      "ground_truth_reason": "fragile释义易碎脆弱标准，解析与选项自洽，干扰项合理。",
+      "fixed_input": {
+        "canonical_form": "fragile",
+        "part_of_speech": "adj",
+        "target_meaning": "易碎的，脆弱的",
+        "required_task_families": ["meaning_recognition"]
+      },
+      "candidate_content": {
+        "task_family": "meaning_recognition",
+        "stem": "What does the adjective 'fragile' mean?",
+        "options": [
+          {"id": "opt-1", "text": "易碎的，脆弱的", "is_correct": true, "explanation": "正确释义"},
+          {"id": "opt-2", "text": "坚不可摧的", "is_correct": false, "explanation": "反义干扰"},
+          {"id": "opt-3", "text": "昂贵豪华的", "is_correct": false, "explanation": "无关干扰"},
+          {"id": "opt-4", "text": "极其迅猛的", "is_correct": false, "explanation": "无关干扰"}
+        ],
+        "explanation": "fragile 意为易碎的、虚弱的。"
+      }
+    },
+    {
+      "id": "POS-RS-01",
+      "category": "positive",
+      "expected_verdict": "pass",
+      "ground_truth_reason": "反向选择prosperous对应繁荣兴旺，干扰项bankrupt/destitute/declining对比鲜明，唯一正解。",
+      "fixed_input": {
+        "canonical_form": "prosperous",
+        "part_of_speech": "adj",
+        "target_meaning": "繁荣的，兴旺的",
+        "required_task_families": ["reverse_selection"]
+      },
+      "candidate_content": {
+        "task_family": "reverse_selection",
+        "stem": "请选择表示'繁荣的，兴旺的'的英文单词：",
+        "options": [
+          {"id": "opt-1", "text": "prosperous", "is_correct": true, "explanation": "繁荣的"},
+          {"id": "opt-2", "text": "bankrupt", "is_correct": false, "explanation": "破产的"},
+          {"id": "opt-3", "text": "destitute", "is_correct": false, "explanation": "贫困的"},
+          {"id": "opt-4", "text": "declining", "is_correct": false, "explanation": "衰退的"}
+        ],
+        "explanation": "prosperous 意为繁荣兴旺的。"
+      }
+    },
+    {
+      "id": "POS-RS-02",
+      "category": "positive",
+      "expected_verdict": "pass",
+      "ground_truth_reason": "反向选择inevitable对应不可避免的，干扰项preventable/uncertain/avoidable均为其反义或无关词，唯一正确。",
+      "fixed_input": {
+        "canonical_form": "inevitable",
+        "part_of_speech": "adj",
+        "target_meaning": "不可避免的，必然的",
+        "required_task_families": ["reverse_selection"]
+      },
+      "candidate_content": {
+        "task_family": "reverse_selection",
+        "stem": "请选择表示'不可避免的，必然发生的'的英文单词：",
+        "options": [
+          {"id": "opt-1", "text": "inevitable", "is_correct": true, "explanation": "必然的"},
+          {"id": "opt-2", "text": "preventable", "is_correct": false, "explanation": "可预防的"},
+          {"id": "opt-3", "text": "uncertain", "is_correct": false, "explanation": "不确定的"},
+          {"id": "opt-4", "text": "avoidable", "is_correct": false, "explanation": "可避免的"}
+        ],
+        "explanation": "inevitable 意为不可避免的。"
+      }
+    },
+    {
+      "id": "POS-RS-03",
+      "category": "positive",
+      "expected_verdict": "pass",
+      "ground_truth_reason": "反向选择vague对应模糊不明确的，干扰项distinct/explicit/sharp为反义词，词义精确对应。",
+      "fixed_input": {
+        "canonical_form": "vague",
+        "part_of_speech": "adj",
+        "target_meaning": "模糊的，不明确的",
+        "required_task_families": ["reverse_selection"]
+      },
+      "candidate_content": {
+        "task_family": "reverse_selection",
+        "stem": "请选择表示'模糊的，不明确的'的英语单词：",
+        "options": [
+          {"id": "opt-1", "text": "vague", "is_correct": true, "explanation": "模糊的"},
+          {"id": "opt-2", "text": "distinct", "is_correct": false, "explanation": "清晰明显的"},
+          {"id": "opt-3", "text": "explicit", "is_correct": false, "explanation": "明确详尽的"},
+          {"id": "opt-4", "text": "sharp", "is_correct": false, "explanation": "清晰锐利的"}
+        ],
+        "explanation": "vague 意为模糊的、含糊的。"
+      }
+    },
+    {
+      "id": "POS-RS-04",
+      "category": "positive",
+      "expected_verdict": "pass",
+      "ground_truth_reason": "反向选择enthusiastic对应热情的，干扰项indifferent/reluctant/hostile形成鲜明对照，唯一正解。",
+      "fixed_input": {
+        "canonical_form": "enthusiastic",
+        "part_of_speech": "adj",
+        "target_meaning": "热情的，热心的",
+        "required_task_families": ["reverse_selection"]
+      },
+      "candidate_content": {
+        "task_family": "reverse_selection",
+        "stem": "请选择表示'热情的，充满热忱的'的英文单词：",
+        "options": [
+          {"id": "opt-1", "text": "enthusiastic", "is_correct": true, "explanation": "热情的"},
+          {"id": "opt-2", "text": "indifferent", "is_correct": false, "explanation": "漠不关心的"},
+          {"id": "opt-3", "text": "reluctant", "is_correct": false, "explanation": "勉强不愿的"},
+          {"id": "opt-4", "text": "hostile", "is_correct": false, "explanation": "敌对冷淡的"}
+        ],
+        "explanation": "enthusiastic 意为热情的、热心的。"
+      }
+    },
+    {
+      "id": "POS-RS-05",
+      "category": "positive",
+      "expected_verdict": "pass",
+      "ground_truth_reason": "反向选择permanent对应长期的永久的，干扰项temporary/transient/fleeting为时间短暂近义词，结构严谨。",
+      "fixed_input": {
+        "canonical_form": "permanent",
+        "part_of_speech": "adj",
+        "target_meaning": "长久的，永久的",
+        "required_task_families": ["reverse_selection"]
+      },
+      "candidate_content": {
+        "task_family": "reverse_selection",
+        "stem": "请选择表示'永久的，长久的'的英语单词：",
+        "options": [
+          {"id": "opt-1", "text": "permanent", "is_correct": true, "explanation": "永久的"},
+          {"id": "opt-2", "text": "temporary", "is_correct": false, "explanation": "暂时的"},
+          {"id": "opt-3", "text": "transient", "is_correct": false, "explanation": "转瞬即逝的"},
+          {"id": "opt-4", "text": "fleeting", "is_correct": false, "explanation": "短暂飞逝的"}
+        ],
+        "explanation": "permanent 意为永久的、长期的。"
+      }
+    },
+    {
+      "id": "POS-CS-01",
+      "category": "positive",
+      "expected_verdict": "pass",
+      "ground_truth_reason": "做实验验证假说，conducted a series of experiments搭配地道自然，干扰项rumors/apologies/compliments语法或语义不合，唯一正解。",
+      "fixed_input": {
+        "canonical_form": "experiment",
+        "part_of_speech": "noun",
+        "target_meaning": "实验，试验",
+        "required_task_families": ["context_selection"]
+      },
+      "candidate_content": {
+        "task_family": "context_selection",
+        "stem": "The research team conducted a series of carefully designed ___ in the laboratory to verify the novel scientific hypothesis.",
+        "options": [
+          {"id": "opt-1", "text": "experiments", "is_correct": true, "explanation": "实验，搭配 conduct experiments"},
+          {"id": "opt-2", "text": "rumors", "is_correct": false, "explanation": "谣言，语境不合"},
+          {"id": "opt-3", "text": "apologies", "is_correct": false, "explanation": "道歉，语境不合"},
+          {"id": "opt-4", "text": "compliments", "is_correct": false, "explanation": "赞美，语境不合"}
+        ],
+        "explanation": "进行科学实验验证假说，conduct experiments 为标准搭配。"
+      }
+    },
+    {
+      "id": "POS-CS-02",
+      "category": "positive",
+      "expected_verdict": "pass",
+      "ground_truth_reason": "室内公共场所严禁吸烟，strictly prohibited by law固定搭配，干扰项encouraged/praised/promoted相反，答案唯一。",
+      "fixed_input": {
+        "canonical_form": "prohibit",
+        "part_of_speech": "verb",
+        "target_meaning": "禁止，阻止",
+        "required_task_families": ["context_selection"]
+      },
+      "candidate_content": {
+        "task_family": "context_selection",
+        "stem": "Smoking inside all public healthcare facilities is strictly ___ by municipal legislation.",
+        "options": [
+          {"id": "opt-1", "text": "prohibited", "is_correct": true, "explanation": "被法律严格禁止"},
+          {"id": "opt-2", "text": "encouraged", "is_correct": false, "explanation": "被鼓励，与常理冲突"},
+          {"id": "opt-3", "text": "praised", "is_correct": false, "explanation": "被表扬，与常理冲突"},
+          {"id": "opt-4", "text": "promoted", "is_correct": false, "explanation": "被推广，与常理冲突"}
+        ],
+        "explanation": "公共医疗场所吸烟被法律明令禁止，选 prohibited。"
+      }
+    },
+    {
+      "id": "POS-CS-03",
+      "category": "positive",
+      "expected_verdict": "pass",
+      "ground_truth_reason": "干旱导致饮用水极度匮乏，became extremely scarce搭配精确自然，干扰项plentiful/abundant/infinite词义颠倒，唯一正解。",
+      "fixed_input": {
+        "canonical_form": "scarce",
+        "part_of_speech": "adj",
+        "target_meaning": "缺乏的，不足的",
+        "required_task_families": ["context_selection"]
+      },
+      "candidate_content": {
+        "task_family": "context_selection",
+        "stem": "After months without rain, clean drinking water became dangerously ___ in the remote desert outpost.",
+        "options": [
+          {"id": "opt-1", "text": "scarce", "is_correct": true, "explanation": "匮乏短缺的"},
+          {"id": "opt-2", "text": "plentiful", "is_correct": false, "explanation": "充足丰富的，与久旱冲突"},
+          {"id": "opt-3", "text": "abundant", "is_correct": false, "explanation": "充裕的，与久旱冲突"},
+          {"id": "opt-4", "text": "infinite", "is_correct": false, "explanation": "无限的，与久旱冲突"}
+        ],
+        "explanation": "久旱无雨导致清洁饮用水极其匮乏，填入 scarce。"
+      }
+    },
+    {
+      "id": "POS-CS-04",
+      "category": "positive",
+      "expected_verdict": "pass",
+      "ground_truth_reason": "地震灾民恢复生活，help the survivors recover from the disaster地道自然，干扰项retreat/resign/refrain搭配不当，唯一正解。",
+      "fixed_input": {
+        "canonical_form": "recover",
+        "part_of_speech": "verb",
+        "target_meaning": "恢复，康复",
+        "required_task_families": ["context_selection"]
+      },
+      "candidate_content": {
+        "task_family": "context_selection",
+        "stem": "Emergency aid was dispatched rapidly to help the affected community ___ from the devastating natural disaster.",
+        "options": [
+          {"id": "opt-1", "text": "recover", "is_correct": true, "explanation": "从灾难中恢复，recover from"},
+          {"id": "opt-2", "text": "retreat", "is_correct": false, "explanation": "撤退，语义不合"},
+          {"id": "opt-3", "text": "resign", "is_correct": false, "explanation": "辞职，语义不合"},
+          {"id": "opt-4", "text": "refrain", "is_correct": false, "explanation": "克制，语义不合"}
+        ],
+        "explanation": "从灾难中恢复生活，搭配为 recover from。"
+      }
+    },
+    {
+      "id": "POS-CS-05",
+      "category": "positive",
+      "expected_verdict": "pass",
+      "ground_truth_reason": "早高峰堵车造成严重延误，caused a major delay in our journey逻辑严密，干扰项acceleration/shortcut/celebration语义荒谬，唯一正解。",
+      "fixed_input": {
+        "canonical_form": "delay",
+        "part_of_speech": "noun",
+        "target_meaning": "延误，耽搁",
+        "required_task_families": ["context_selection"]
+      },
+      "candidate_content": {
+        "task_family": "context_selection",
+        "stem": "Unexpected road construction during the morning rush hour caused an unavoidable ___ in our commute.",
+        "options": [
+          {"id": "opt-1", "text": "delay", "is_correct": true, "explanation": "延误，耽搁"},
+          {"id": "opt-2", "text": "acceleration", "is_correct": false, "explanation": "加速，与修路堵车冲突"},
+          {"id": "opt-3", "text": "shortcut", "is_correct": false, "explanation": "捷径，与修路冲突"},
+          {"id": "opt-4", "text": "celebration", "is_correct": false, "explanation": "庆祝，语义荒谬"}
+        ],
+        "explanation": "修路堵车造成行程延误，选 delay。"
+      }
+    }
+  ]
+}

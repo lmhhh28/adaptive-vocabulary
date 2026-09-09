@@ -1,0 +1,539 @@
+{
+  "schema_version": 1,
+  "design_version": "1.1.0",
+  "task_protocol": "module-plan-v1",
+  "status_note": "These are implementation tasks, not running app features. Ready means dependencies recorded complete; commands become available when implemented.",
+  "tasks": [
+    {
+      "id": "M00",
+      "title": "运行底座与真实进程验收器",
+      "depends_on": [],
+      "owns": [
+        "cmd/avocab/",
+        "internal/platform/",
+        "internal/core/",
+        "migrations/000_runtime.sql",
+        "e2e/runner.py",
+        "e2e/cases/M00/",
+        "e2e/support/lifecycle.py",
+        "e2e/support/http_client.py",
+        "e2e/support/clock.py"
+      ],
+      "objective": "交付可启动的单机Go服务、SQLite迁移/锁/配置、统一传输约束及真实子进程E2E生命周期。",
+      "steps": [
+        "实现serve/doctor与结构化ready输出、loopback动态端口、数据目录权限、SQLite逐连接参数和同一进程锁；未知schema/policy失败即停。",
+        "固定共享TxnContext、时钟/UUID/随机源接口、幂等及维护入口；生产构建不暴露测试时钟/故障控制。",
+        "交付最小首页、client-context、health；实现启动/就绪/浏览器/进程重启/清理和证据输出的E2E runner，缺用例或缺实现必须非零退出。"
+      ],
+      "start_command": "./bin/avocab serve --data-dir artifacts/manual/M00 --listen 127.0.0.1:8080 --policy config/policy-v2.json",
+      "e2e_command": "make e2e MODULE=M00",
+      "test_kind": "真实Go进程 + SQLite + HTTP + Chromium",
+      "acceptance": [
+        "PL-01：新目录启动→浏览器首页与health→重启；schema/contract/policy/SQLite版本可核对。",
+        "PL-02：第二服务进程、非loopback、非法Origin/CSRF、未知schema被拒绝，原目录不受破坏。",
+        "PL-03：e2e runner对零用例、启动失败、超时、断言失败非零退出；所有测试子进程可回收。"
+      ],
+      "done_artifacts": [
+        "二进制、迁移与启动命令",
+        "共享接口和测试控制约定",
+        "M00结果JSON、浏览器trace/截图、真实进程日志"
+      ],
+      "migration_prefix": "000",
+      "status": "planned",
+      "commands_available_now": false,
+      "contract_version": "1.1.0",
+      "read_first": [
+        "docs/00-frozen-design.md",
+        "docs/08-http-contract.md",
+        "docs/10-review-resolutions.md",
+        "docs/09-implementation-plan.md"
+      ]
+    },
+    {
+      "id": "M01",
+      "title": "标准内容、固定种子与题库管理",
+      "depends_on": [
+        "M00"
+      ],
+      "owns": [
+        "internal/content/",
+        "internal/bank/",
+        "migrations/010_content.sql",
+        "web/templates/content/",
+        "web/static/content/",
+        "e2e/cases/M01/"
+      ],
+      "objective": "通过真实服务建立标准词义、不可变题目版本与可测试题库，支持不依赖模型的开发种子。",
+      "steps": [
+        "实现来源/lexeme/sense/form/option身份登记、唯一约束及版本快照；提供core和exam-conflict显式seed，旧版本正文不改写。",
+        "实现sources/banks读写、成员移除/archive与基础内容明细；统一revision/幂等和活动会话/维护检查。",
+        "交付题库列表/详情/创建/成员管理最小页面，展示题型可用数和来源。"
+      ],
+      "start_command": "./bin/avocab serve --data-dir artifacts/manual/M01 --listen 127.0.0.1:8080 --seed core",
+      "e2e_command": "make e2e MODULE=M01",
+      "test_kind": "真实浏览器 → HTTP → SQLite",
+      "acceptance": [
+        "CT-01：首次导入core→查看14题及两个题库→重复seed不增生身份/版本；未知seed失败。",
+        "CT-02：跨库引用同sense，移除/归档不删除全局词义与历史引用。",
+        "CT-03：标点/答案键修订保持form，语义改变新form；重复选项/未知来源拒绝。"
+      ],
+      "done_artifacts": [
+        "完整固定题库和可访问管理页面",
+        "内容身份/幂等证据",
+        "core种子可供后续任务复用"
+      ],
+      "migration_prefix": "010",
+      "status": "planned",
+      "commands_available_now": false,
+      "contract_version": "1.1.0",
+      "read_first": [
+        "docs/00-frozen-design.md",
+        "docs/08-http-contract.md",
+        "docs/10-review-resolutions.md",
+        "docs/09-implementation-plan.md"
+      ]
+    },
+    {
+      "id": "M02",
+      "title": "观测、FSRS、冷却及选择引擎",
+      "depends_on": [
+        "M01"
+      ],
+      "owns": [
+        "internal/learning/",
+        "internal/selection/",
+        "migrations/020_learning.sql",
+        "e2e/fixtures/learning/",
+        "e2e/cases/M02/"
+      ],
+      "objective": "提供由真实事实驱动的纯计算及同事务投影接口，冻结在线/回放一致结果，支持独立CLI组件E2E。",
+      "steps": [
+        "实现10 R04/R05矩阵、时间cutoff、普通/纠错/改答分组及主混淆分母；原事实不保存永久资格结论。",
+        "适配真实go-fsrs库，保存完整Card和版本；实现候选分组/稳定排序、5/3不同lexeme冷却及纠错状态。",
+        "交付e2e专用verify-trace命令，完整输入内容/事实写入全新隔离数据库，再回放并输出状态摘要；该命令不允许写用户库，生产构建不提供测试事实导入。"
+      ],
+      "start_command": "./bin/avocab-e2e learning verify-trace --input e2e/fixtures/learning/ordinary-early.json --output artifacts/manual/M02",
+      "e2e_command": "make e2e MODULE=M02",
+      "test_kind": "真实CLI子进程 → 隔离SQLite事实 → 真实FSRS → 回放（组件E2E，非浏览器流程）",
+      "acceptance": [
+        "OB-01：首次/重复form、24小时内外、本次反馈、考试选择后的曝光标签与在线/回放一致。",
+        "OB-02：五个不同early_review释放普通冷却；纠错不推进普通间隔，普通位置/待巩固/混淆并集符合矩阵。",
+        "OB-03：普通错+两次纠错产生三个review；同日/跨日、未答/改答/失效资格及完整Card可复现。",
+        "SL-01：探索位1/5/9、due/unseen/early互补、稳定并列排序、无内容和小题库阻塞结果确定。"
+      ],
+      "done_artifacts": [
+        "供训练/考试共用的TxnContext内投影接口",
+        "固定事实trace与期望摘要",
+        "无业务服务替身的CLI组件E2E结果"
+      ],
+      "migration_prefix": "020",
+      "status": "planned",
+      "commands_available_now": false,
+      "contract_version": "1.1.0",
+      "read_first": [
+        "docs/00-frozen-design.md",
+        "docs/08-http-contract.md",
+        "docs/10-review-resolutions.md",
+        "docs/09-implementation-plan.md"
+      ]
+    },
+    {
+      "id": "M03",
+      "title": "训练全流程与纠错",
+      "depends_on": [
+        "M01",
+        "M02"
+      ],
+      "owns": [
+        "internal/practice/",
+        "migrations/030_practice.sql",
+        "web/templates/practice/",
+        "web/static/practice/",
+        "e2e/cases/M03/"
+      ],
+      "objective": "交付可在浏览器持续练习、刷新恢复、即时反馈并穿插纠错的完整流程。",
+      "steps": [
+        "实现session/practice创建恢复、next保留与提交的单事务组合；调用M02更新投影，不自行复制学习算法。",
+        "交付题库选择→题目→单选提交→反馈→下一题→结束/放弃页面，处理pending、重试和无候选状态。",
+        "实现纠错form次数/间隔/队列与跨会话曝光；加入事务故障点和发题/结束/retire竞争测试。"
+      ],
+      "start_command": "./bin/avocab serve --data-dir artifacts/manual/M03 --listen 127.0.0.1:8080 --seed core",
+      "e2e_command": "make e2e MODULE=M03",
+      "test_kind": "真实Chromium → 训练HTTP → SQLite事实/FSRS",
+      "acceptance": [
+        "PR-01：实际点击回答→反馈→后续题→结束；未提交前网络/HTML/恢复/错误均无答案字段。",
+        "PR-02：提交成功响应丢失后重试、换键、并发同答案只产生一次attempt/review/feedback；不同答案冲突。",
+        "PR-03：关闭页面/重启服务恢复同实例/选项；普通错+穿插+两种新form纠错正确执行。",
+        "PR-04：提交中途故障所有事实/投影/队列/游标回滚；发题与结束/停用竞争不会保留非法新实例。"
+      ],
+      "done_artifacts": [
+        "最小完整训练UI和API",
+        "事务/恢复E2E结果",
+        "真实数据可由学习查询和回放核对"
+      ],
+      "migration_prefix": "030",
+      "status": "planned",
+      "commands_available_now": false,
+      "contract_version": "1.1.0",
+      "read_first": [
+        "docs/00-frozen-design.md",
+        "docs/08-http-contract.md",
+        "docs/10-review-resolutions.md",
+        "docs/09-implementation-plan.md"
+      ]
+    },
+    {
+      "id": "M04",
+      "title": "考试组卷、改答与交卷",
+      "depends_on": [
+        "M01",
+        "M02"
+      ],
+      "owns": [
+        "internal/exam/",
+        "migrations/040_exam.sql",
+        "web/templates/exam/",
+        "web/static/exam/",
+        "e2e/cases/M04/"
+      ],
+      "objective": "交付固定试卷、持久待确认队列、多标签收敛、限时评分和学习观测的浏览器闭环。",
+      "steps": [
+        "实现配额共同求解、lexeme去重、跨题提示和有界搜索，记录seed与完整实例快照。",
+        "实现10 R01事件协议、服务器草稿、gap屏障、回执恢复、手动/自动交卷单事务；调用M02处理合格观测。",
+        "交付组卷→选择/clear/改答→保存状态→交卷→报告UI；与M03共同验证单活动session。"
+      ],
+      "start_command": "./bin/avocab serve --data-dir artifacts/manual/M04 --listen 127.0.0.1:8080 --seed core",
+      "e2e_command": "make e2e MODULE=M04",
+      "test_kind": "真实多页面Chromium → 考试HTTP → SQLite/FSRS",
+      "acceptance": [
+        "EX-01：core默认三题三任务实际组卷成功；exam-conflict返回无解；搜索上限返回不同错误。",
+        "EX-02：同水位双标签竞争、明确拒绝重排、接受后丢响应、unknown原样重试、gap屏障迟到请求，按10 R01验证。",
+        "EX-03：先错后对/先对后错/clear/noop最终评分与首次正确性准确；合格单次选择才更新FSRS。",
+        "EX-04：deadline等时、关闭页面、重启过期结算、提交/最后选择竞争和跨模式创建不违反唯一槽位。"
+      ],
+      "done_artifacts": [
+        "可真实完成的三题型考试与报告",
+        "多标签和断线trace",
+        "组卷/评分/投影一致性证据"
+      ],
+      "migration_prefix": "040",
+      "status": "planned",
+      "commands_available_now": false,
+      "contract_version": "1.1.0",
+      "read_first": [
+        "docs/00-frozen-design.md",
+        "docs/08-http-contract.md",
+        "docs/10-review-resolutions.md",
+        "docs/09-implementation-plan.md"
+      ]
+    },
+    {
+      "id": "M05",
+      "title": "来源导入、词表建库与异常处置",
+      "depends_on": [
+        "M01"
+      ],
+      "owns": [
+        "internal/importer/",
+        "migrations/050_import.sql",
+        "web/templates/import/",
+        "web/static/import/",
+        "e2e/fixtures/import/",
+        "e2e/cases/M05/"
+      ],
+      "objective": "从基础来源和TXT/CSV词表完成可追溯建库，异常可在页面处置，独立于学习和生成进程。",
+      "steps": [
+        "实现固定ECDICT适配及小型原始来源fixture，校验来源/哈希/规范化冲突并保存统计。",
+        "实现TXT/CSV与source entries不同输入契约、异步进度、resolved/ambiguous/not_found/invalid/excluded。",
+        "交付导入预览、异常选择已有标准sense或排除、来源修订后重新解析流程；不能将混排释义直接发布为标准sense。"
+      ],
+      "start_command": "./bin/avocab serve --data-dir artifacts/manual/M05 --listen 127.0.0.1:8080 --seed core",
+      "e2e_command": "make e2e MODULE=M05",
+      "test_kind": "真实文件上传/浏览器 → 导入HTTP → SQLite",
+      "acceptance": [
+        "IM-01：UTF-8 TXT/CSV真实上传→自动匹配/异常→adopt/exclude→题库成员与原输入可追溯。",
+        "IM-02：重复上传幂等、大小/行数限制、重复JSON键、来源冲突、多义混排和非法引用被正确处理。",
+        "IM-03：小型固定来源统计有golden结果；全量ECDICT另做离线导入验收，不在每次E2E重复下载。"
+      ],
+      "done_artifacts": [
+        "导入和异常处置页面",
+        "固定输入/预期统计集",
+        "实际文件上传验收与来源审计"
+      ],
+      "migration_prefix": "050",
+      "status": "planned",
+      "commands_available_now": false,
+      "contract_version": "1.1.0",
+      "read_first": [
+        "docs/00-frozen-design.md",
+        "docs/08-http-contract.md",
+        "docs/10-review-resolutions.md",
+        "docs/09-implementation-plan.md"
+      ]
+    },
+    {
+      "id": "M06",
+      "title": "生成任务服务、租约与预算账本",
+      "depends_on": [
+        "M01"
+      ],
+      "owns": [
+        "internal/generation/",
+        "migrations/060_generation.sql",
+        "web/templates/generation/",
+        "web/static/generation/",
+        "e2e/support/scripted_worker.py",
+        "e2e/cases/M06/"
+      ],
+      "objective": "在Go提供可供真实独立worker调用的任务协议、持久调用预算与受控发布；使用脚本worker验证网络边界。",
+      "steps": [
+        "实现固定job/item、claim/renew、fence、预算reserve/settle及candidate/complete；维护期间候选/预算可继续，发布暂停。",
+        "将10 R02原子预留、未知消耗、迟到结算、预算超额及无checkpoint恢复落实为持久状态机。",
+        "交付任务/预算/异常摘要页面；用独立HTTP脚本worker调用服务，所有正式内容仍由Go校验并发布。"
+      ],
+      "start_command": "./bin/avocab serve --data-dir artifacts/manual/M06 --listen 127.0.0.1:8080 --seed core",
+      "e2e_command": "make e2e MODULE=M06",
+      "test_kind": "真实Go + SQLite + 独立HTTP脚本worker（协议组件E2E）",
+      "acceptance": [
+        "GE-01：任务领取/续租/过期接管，旧fence不能发布；双评估完整pass才可发布。",
+        "GE-02：最后一次额度并发抢占、调用后崩溃、usage缺失/迟到/超预留、网络尝试上限及预算恢复，按10 R02核对。",
+        "GE-03：候选/结算响应丢失幂等；维护期间候选可保存而正式发布暂停；实例只能引用正式版本。"
+      ],
+      "done_artifacts": [
+        "可实际连接的worker协议",
+        "持久预算账本和进度UI",
+        "供应商发送授权与预算对账证据"
+      ],
+      "migration_prefix": "060",
+      "status": "planned",
+      "commands_available_now": false,
+      "contract_version": "1.1.0",
+      "read_first": [
+        "docs/00-frozen-design.md",
+        "docs/08-http-contract.md",
+        "docs/10-review-resolutions.md",
+        "docs/09-implementation-plan.md"
+      ]
+    },
+    {
+      "id": "M07",
+      "title": "Python离线生产与自动质检闭环",
+      "depends_on": [
+        "M06"
+      ],
+      "owns": [
+        "worker/avocab_worker/",
+        "e2e/support/provider_server.py",
+        "e2e/fixtures/provider/",
+        "e2e/cases/M07/"
+      ],
+      "objective": "用真实Python/LangGraph进程串起Go任务、真实HTTP模型适配、双评估、候选发布和崩溃恢复。",
+      "steps": [
+        "实现worker启动配置、token文件、HTTP JSON adapter和LangGraph固定item checkpoint，供应商调用前后执行预算/租约协议。",
+        "实现生成/两次独立评估调用/有限修订/uncertain-conflict异常，保存所有获得的候选及关联调用记录。",
+        "构建本地HTTP脚本provider，提供确定性合格/拒绝/冲突/超时/断线/缺usage场景；不是MockTransport，不替换Go或SQLite。"
+      ],
+      "start_command": "make run-generation-lab DATA_DIR=artifacts/manual/M07",
+      "e2e_command": "make e2e MODULE=M07",
+      "test_kind": "真实Go + 真实Python/LangGraph + 独立HTTP provider + 双SQLite",
+      "acceptance": [
+        "WK-01：固定job→真实provider网络请求→两次评估→Go发布→内容可供实例引用，调用账本逐次可追溯。",
+        "WK-02：生成后/供应商已响应但候选未提交时强制终止worker，恢复后不复用未知调用授权、不重复发布。",
+        "WK-03：reject有限修订，uncertain/conflict停异常，租约丢失/预算耗尽停止发送；无凭证普通启动仍fixture可用。"
+      ],
+      "done_artifacts": [
+        "可启动worker与本地生成实验室",
+        "跨进程故障恢复记录",
+        "确定性协议质量验收；不宣称真实模型语义质量已通过"
+      ],
+      "migration_prefix": null,
+      "status": "planned",
+      "commands_available_now": false,
+      "contract_version": "1.1.0",
+      "read_first": [
+        "docs/00-frozen-design.md",
+        "docs/08-http-contract.md",
+        "docs/10-review-resolutions.md",
+        "docs/09-implementation-plan.md"
+      ]
+    },
+    {
+      "id": "M08",
+      "title": "内容证据处置、报告修订与重建恢复",
+      "depends_on": [
+        "M02",
+        "M03",
+        "M04"
+      ],
+      "owns": [
+        "internal/maintenance/",
+        "internal/revision/",
+        "migrations/080_revision.sql",
+        "web/templates/quality/",
+        "web/static/quality/",
+        "e2e/cases/M08/"
+      ],
+      "objective": "将历史错误内容的隔离/失效/恢复、报告revision和投影重建接成可恢复的真实流程。",
+      "steps": [
+        "实现disputed/invalidate/restore_validity与统一维护闸门、读取stale标志、重建运行和原子切换。",
+        "实现10 R03的policy_only/evidence_revision、resume/abort/restart与进程重启恢复；原报告与事实不可变。",
+        "交付异常/影响范围/原报告和修订报告/维护状态页面；CLI写库与服务使用同一独占进程锁。"
+      ],
+      "start_command": "./bin/avocab serve --data-dir artifacts/manual/M08 --listen 127.0.0.1:8080 --seed core",
+      "e2e_command": "make e2e MODULE=M08",
+      "test_kind": "真实浏览器/API + Go重建 + 停服务CLI恢复 + SQLite回放",
+      "acceptance": [
+        "RB-01：活动session期间处置整个事务拒绝且不写修订；结束后处置原子进入维护并重建。",
+        "RB-02：invalidate后失败→abort仍维护→重启仍维护→restart成功才解闸；policy_only abort可安全恢复。",
+        "RB-03：无效题从证据/FSRS/混淆中排除，原成绩不变，修订报告分母正确；全void比率null；restore重新一致。"
+      ],
+      "done_artifacts": [
+        "内容错误可真实处理的管理流程",
+        "两类abort状态证据",
+        "在线/回放/报告revision对账"
+      ],
+      "migration_prefix": "080",
+      "status": "planned",
+      "commands_available_now": false,
+      "contract_version": "1.1.0",
+      "read_first": [
+        "docs/00-frozen-design.md",
+        "docs/08-http-contract.md",
+        "docs/10-review-resolutions.md",
+        "docs/09-implementation-plan.md"
+      ]
+    },
+    {
+      "id": "M09",
+      "title": "完整备份、新目录恢复与对账",
+      "depends_on": [
+        "M07",
+        "M08"
+      ],
+      "owns": [
+        "internal/backup/",
+        "e2e/cases/M09/"
+      ],
+      "objective": "通过实际文件快照和全新目录恢复，证明事实、活动实例、幂等、投影、预算与可选checkpoint可续用。",
+      "steps": [
+        "实现backup create/verify/restore，快照水位从快照本身读取、manifest/哈希/原子完成目录。",
+        "新目录验证引用与SQLite，作废所有未完成租约并递增fence；保留预算unknown占用；可选checkpoint单独对账。",
+        "恢复后启动真实服务和worker，继续原活动流程；覆盖维护中备份与缺checkpoint恢复。"
+      ],
+      "start_command": "./bin/avocab backup verify --input artifacts/manual/M09/backup",
+      "e2e_command": "make e2e MODULE=M09",
+      "test_kind": "真实服务/worker → 文件备份CLI → 全新目录 → 重启后继续作答",
+      "acceptance": [
+        "BK-01：实际创建练习/考试历史及未完成生成任务→备份→新目录恢复→恢复实例/草稿/幂等/报告。",
+        "BK-02：恢复不带checkpoint仍保持调用预算，旧worker不能发布，重新领取不重用未知调用预留。",
+        "BK-03：损坏哈希/路径穿越/未知manifest或schema/活动目标目录拒绝；维护状态备份恢复不意外解闸。"
+      ],
+      "done_artifacts": [
+        "可执行备份恢复CLI",
+        "独立恢复目录及校验清单",
+        "恢复后完整流程与回放证据"
+      ],
+      "migration_prefix": null,
+      "status": "planned",
+      "commands_available_now": false,
+      "contract_version": "1.1.0",
+      "read_first": [
+        "docs/00-frozen-design.md",
+        "docs/08-http-contract.md",
+        "docs/10-review-resolutions.md",
+        "docs/09-implementation-plan.md"
+      ]
+    },
+    {
+      "id": "M10",
+      "title": "个人使用全流程与浏览器发布验收",
+      "depends_on": [
+        "M03",
+        "M04",
+        "M05",
+        "M07",
+        "M08",
+        "M09"
+      ],
+      "owns": [
+        "web/templates/shell/",
+        "web/static/shell/",
+        "e2e/cases/M10/",
+        "docs/runbook.md"
+      ],
+      "objective": "把各模块最小页面整合为个人可连续使用的本机产品，完成干净目录端到端验收和操作手册。",
+      "steps": [
+        "整合导航、键盘操作、错误/保存/无候选/维护状态、窄屏布局；业务规则复用模块实现。",
+        "以干净目录通过真实UI完成建库→训练→考试→异常处理→重建→备份恢复→继续使用。",
+        "交付安装/启动/停止/恢复说明和完整验收产物；检查所有内容载荷、缓存和管理旁路的答案边界。"
+      ],
+      "start_command": "./bin/avocab serve --data-dir artifacts/manual/M10 --listen 127.0.0.1:8080 --seed core",
+      "e2e_command": "make e2e MODULE=M10",
+      "test_kind": "真实Chromium完整产品E2E，复用真实Go/SQLite/worker",
+      "acceptance": [
+        "APP-01：全新目录从页面完成个人主要流程，刷新/服务重启可继续，无手工改数据库。",
+        "APP-02：活动会话期间管理/历史反馈/错误/缓存等内容边界符合冻结规则，控制台无未处理错误。",
+        "APP-03：键盘单选/提交、保存中/失败重试、窄屏和维护恢复可操作；产物标明环境和未通过项。"
+      ],
+      "done_artifacts": [
+        "完整本机产品和操作手册",
+        "全流程浏览器trace/截图/结果",
+        "fixture产品验收；与生产语义门槛分开记录"
+      ],
+      "migration_prefix": null,
+      "status": "planned",
+      "commands_available_now": false,
+      "contract_version": "1.1.0",
+      "read_first": [
+        "docs/00-frozen-design.md",
+        "docs/08-http-contract.md",
+        "docs/10-review-resolutions.md",
+        "docs/09-implementation-plan.md"
+      ]
+    },
+    {
+      "id": "M11",
+      "title": "生产来源与真实模型自动发布门槛",
+      "depends_on": [
+        "M05",
+        "M07",
+        "M08"
+      ],
+      "owns": [
+        "fixtures/quality-benchmark/",
+        "config/quality-benchmark-v1.json",
+        "e2e/cases/M11/",
+        "docs/production-acceptance.md"
+      ],
+      "objective": "在明确配置与预算下验证真实provider及固定质量检查集，决定是否可开启批量自动发布。",
+      "steps": [
+        "扩充至少30负例/15正例并按冻结类别覆盖，核验基准答案及来源，避免用生成器自评分当真值。",
+        "配置固定generator/evaluator profile和预算，通过真实HTTPS调用完成盲评/误拦截报告；不把本地脚本provider通过算为语义验收。",
+        "验收成功后记录provider/model/prompt/质量策略与检查集哈希；变更时重新验证。"
+      ],
+      "start_command": "make quality-live PROFILE=/absolute/path/to/production-profile.json",
+      "e2e_command": "make e2e MODULE=M11 PROFILE=/absolute/path/to/production-profile.json ALLOW_PAID=1",
+      "test_kind": "真实生产provider/来源验收，显式配置和额度门槛",
+      "acceptance": [
+        "QL-01：所有已知错义/多解/无解/答案冲突负例拦截，至少每类5个、合计30负例与15正例；报告正例误拦截数/比例。",
+        "QL-02：固定profile、真实模型ID/usage/调用账本和prompt版本可追溯；预算与故障策略一致。",
+        "QL-03：缺profile/key/明确预算则返回blocked_configuration且非零退出，不跳过后标通过；fixture应用仍可启动。"
+      ],
+      "done_artifacts": [
+        "固定语义检查集",
+        "真实模型质量/成本报告",
+        "可否开启批量自动发布的明确验收结论"
+      ],
+      "migration_prefix": null,
+      "status": "planned",
+      "commands_available_now": false,
+      "contract_version": "1.1.0",
+      "read_first": [
+        "docs/00-frozen-design.md",
+        "docs/08-http-contract.md",
+        "docs/10-review-resolutions.md",
+        "docs/09-implementation-plan.md"
+      ]
+    }
+  ]
+}

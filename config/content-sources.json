@@ -1,0 +1,50 @@
+{
+  "schema_version": 1,
+  "sources": [
+    {
+      "id": "project-authored-exam-fixture-v1",
+      "kind": "development_fixture",
+      "version": "1.0.0",
+      "location": "fixtures/exam-assembly-v1.json",
+      "provenance": "Original additional bank context and assembly acceptance cases; references senses from project-authored-fixture-v1 without rewriting that source.",
+      "usage_scope": "Development assembly positive/negative cases; not production semantic acceptance",
+      "frequency": null,
+      "exam_frequency": null
+    },
+    {
+      "id": "project-authored-fixture-v1",
+      "kind": "development_fixture",
+      "version": "1.0.0",
+      "location": "fixtures/content-v1.json",
+      "provenance": "Original small examples authored for this project; no third-party dictionary text copied.",
+      "usage_scope": "Development and contract verification; not a complete curriculum or production quality benchmark",
+      "frequency": null,
+      "exam_frequency": null
+    },
+    {
+      "id": "ecdict-candidate-v1",
+      "kind": "optional_import_candidate",
+      "repository": "https://github.com/skywind3000/ECDICT",
+      "revision": "8defb761f7c7ad1818ca94290a1844d7b33d6b23",
+      "upstream_tag": "1.0.28",
+      "upstream_tag_object": "64b6edbb29e547dab22b22fca76a5c29117bd8c8",
+      "data_path": "ecdict.csv",
+      "license_url": "https://github.com/skywind3000/ECDICT/blob/8defb761f7c7ad1818ca94290a1844d7b33d6b23/LICENSE",
+      "declared_license": "MIT",
+      "usage_scope": "Candidate words/translations only; preserve upstream notice on import. Per-entry provenance not independently audited.",
+      "curriculum_rule": "Exact whitespace-delimited cet6 token in raw tag column, if present; not official CET-6 completeness",
+      "snapshot_verified": true,
+      "verified_at": "2026-09-08",
+      "data_sha256": "d0ce61e560b50d9905d20de3173aa3ca80950ce235bedd21c53e025cf9f38cb0",
+      "data_bytes": 65936699,
+      "license_sha256": "ebd1186ec36c0dba6bb2d77cc59b0b292d4429b1dbe19c39bd0eab121ec73369",
+      "raw_row_count": 770611,
+      "raw_unique_word_count": 770611,
+      "raw_duplicate_word_rows": 0,
+      "nonempty_translation_rows": 768739,
+      "cet6_row_count": 5407,
+      "cet6_unique_word_count": 5407,
+      "import_gate": "Raw snapshot and license verified; resolve raw entries into explicit senses and record resolution/quality results before activating this source."
+    }
+  ]
+}

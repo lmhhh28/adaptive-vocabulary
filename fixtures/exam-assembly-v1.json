@@ -1,0 +1,31 @@
+{
+  "schema_version": 1,
+  "source_id": "project-authored-exam-fixture-v1",
+  "source_version": "1.0.0",
+  "requires": "content-v1.json",
+  "purpose": "development_exam_assembly",
+  "questions": [
+    {
+      "id": "00000000-0000-4000-8000-000000000314",
+      "form_id": "00000000-0000-4000-8000-000000000514",
+      "sense_id": "00000000-0000-4000-8000-000000000109",
+      "sense_version_id": "00000000-0000-4000-8000-000000000209",
+      "task_family": "context_selection",
+      "stem": "For their picnic, they chose the grassy ___ along the edge of the water.",
+      "options": [
+        {"id": "00000000-0000-4000-8000-000000002052", "text": "bank", "sense_id": "00000000-0000-4000-8000-000000000109", "language": "en", "option_identity_id": "00000000-0000-4000-8000-000000003109"},
+        {"id": "00000000-0000-4000-8000-000000002053", "text": "window", "sense_id": "00000000-0000-4000-8000-000000000103", "language": "en", "option_identity_id": "00000000-0000-4000-8000-000000003103"},
+        {"id": "00000000-0000-4000-8000-000000002054", "text": "apple", "sense_id": "00000000-0000-4000-8000-000000000105", "language": "en", "option_identity_id": "00000000-0000-4000-8000-000000003105"},
+        {"id": "00000000-0000-4000-8000-000000002055", "text": "cloud", "sense_id": "00000000-0000-4000-8000-000000000106", "language": "en", "option_identity_id": "00000000-0000-4000-8000-000000003106"}
+      ],
+      "correct_option_id": "00000000-0000-4000-8000-000000002052",
+      "explanation": "水边长草的岸边用 bank 表示。选项所引用的标准词义沿用基础fixture来源。"
+    }
+  ],
+  "cases": [
+    {"id": "balanced_three_tasks", "pool": "core", "expected_feasible": true, "witness": ["00000000-0000-4000-8000-000000000304", "00000000-0000-4000-8000-000000000311", "00000000-0000-4000-8000-000000000314"]},
+    {"id": "original_cross_question_unsatisfied", "pool": "base", "expected_feasible": false},
+    {"id": "english_distractor_conflict", "pool": "core", "only_question_ids": ["00000000-0000-4000-8000-000000000304", "00000000-0000-4000-8000-000000000306", "00000000-0000-4000-8000-000000000314"], "expected_feasible": false, "expected_violation": "cross_question_constraint"},
+    {"id": "duplicate_target", "pool": "core", "only_question_ids": ["00000000-0000-4000-8000-000000000304", "00000000-0000-4000-8000-000000000305", "00000000-0000-4000-8000-000000000311"], "expected_feasible": false, "expected_violation": "lexeme_dedup"}
+  ]
+}

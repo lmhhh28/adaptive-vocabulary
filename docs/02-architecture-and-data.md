@@ -1,6 +1,6 @@
 # 架构与数据模型
 
-本文是逻辑模型和一致性约束，不是最终 SQL schema。关系字段可标准化，题目与生成原始内容可用 JSON 快照；实现前据实际查询补齐索引。
+状态：冻结规格1.1.0。本文定义逻辑模型，[00](00-frozen-design.md) 固定身份、数据库唯一约束、状态机及维护协议；物理 SQL 迁移属于实现交付，不得弱化这些约束。题目与生成内容使用 JSON 快照，首版不依赖外部媒体附件。
 
 ## 1. 运行结构
 
@@ -32,6 +32,7 @@ Go 是正式业务数据的唯一写入入口。Python 管理自身工作流检�
 | `bank` / `bank_sense` | 题库与目标词义成员关系；保存采用的导入解析结果 |
 | `import_item` | raw_input、规范化结果、候选匹配、resolved_sense_ids、解析规则版本、状态及原因 |
 | `generation_job` / `generation_item` | 固定输入引用、配置、逻辑任务 ID、租约、尝试编号、进度与异常 |
+| `generation_call` / `generation_budget_ledger` | logical_call_key、network_attempt_id、reservation_id、原owner/fence、输入摘要、请求/token预留、settled/unknown及实际usage；调用前Go原子授权，见10 R02 |
 | `question_candidate` | 候选正文、输入引用/摘要、模型和 prompt 版本、程序/语义检查、修订祖先、最终处置 |
 | `question_form` | 内容形式的稳定标识；根据规范化题干、目标词义、task_family、语义选项集合识别 |
 | `question_version` | form_id、sense_version_id、task_family、四个选项及 ID、答案键、解析、candidate_id、发布/停用信息 |
@@ -70,7 +71,7 @@ question_form 表示题目内容形式；改标点或修正文案可以产生新
 
 考试改选必须作为有序事件发送和落库；仅周期性保存最终选项不足以恢复首次选择。缺少可靠选择时间线时标记 telemetry_incomplete，不能假定未改答。
 
-建议 attempt 保存或引用：instance_id、sense_id、task_family、source、purpose、selected/final option、first_response_event_id、final_response_event_id、revision_count、server timestamps、client_active_duration、interruption_flags、grading_version、事件序号。未作答用 omitted 独立表示。
+attempt必须保存或引用：instance_id、sense_id、task_family、source、purpose、selected/final option、first_response_event_id、final_response_event_id、revision_count、server timestamps、client_active_duration、interruption_flags、grading_version、事件序号。未作答用omitted独立表示；缺失遥测字段为null。
 
 服务器收答时间是业务排序依据，但不等于认知发生的精确时间。客户端有效停留、实际展示和中断只作带来源的遥测；发题成功不证明用户已看见。
 
@@ -79,7 +80,7 @@ question_form 表示题目内容形式；改标点或修正文案可以产生新
 | 投影 | 主键与内容 | 边界 |
 | --- | --- | --- |
 | `evidence_projection` | sense_id + task_family；各观测分组样本数、正确数、跨日期/形式覆盖、近期表现、有效 RT 样本 | 描述性证据，不是校准能力概率 |
-| `memory_projection` | sense_id + task_family；FSRS state/D/S、last_review_at、due_at、reps、lapses | 时间调度基线；可从事实与策略重建 |
+| `memory_projection` | sense_id + task_family；保存完整FSRS Card，包括state/D/S、last_review_at、due_at、reps、lapses、学习步数与elapsed/scheduled days | 时间调度基线；可从事实与策略重建 |
 | `confusion_projection` | target_sense + task_family + distractor_identity；出现机会、错选、最近时间及观测分组 | 避免只有错选次数而没有分母 |
 | `question_projection` | question_form/version；作答、正确、耗时、暴露/目的分组 | 个人样本统计，不直接称题目难度 |
 | `correction_item` | 当前会话与 unit、触发事件、已穿插目标词、重试数、状态 | 业务队列，不是第二个记忆模型 |
@@ -98,15 +99,15 @@ FSRS 元数据分别保存：scheduler_family、algorithm_version、implementati
 
 如启用随机选题或 interval fuzz，保存随机输入/种子及相应算法版本；单有种子并不能跨随机算法版本保证重现。已展示题目由实例快照保证历史准确性。
 
-重建流程：固定事件水位 → 在新投影版本回放 → 校验事件数量/摘要及关键状态 → 原子切换活动版本。首版重建期间暂停新作答写入；生成服务可继续处理不影响水位的任务。重建失败保留原活动投影，不能先清空正在使用的状态。
+重建流程：无活动会话时进入全局维护闸门并固定事件水位 → 新投影版本回放 → 校验数量/摘要及状态 → 原子切换活动版本。作答、曝光、证据修订、正式发布和成员/词义变更暂停；生成候选及预算账本可继续。失败保留原投影与维护模式；只有事实修订未变的policy_only运行可abort解闸，evidence_revision中止后仍须restart成功，见[10 R03](10-review-resolutions.md)。
 
 model_rebuild_run 保存起止版本、水位、事件数、结果摘要、完成状态和错误。正常事务写入保证事实与投影一致；崩溃恢复不得跳过尚未应用的事件。
 
 ## 6. 事务与幂等
 
-训练提交事务：校验会话/实例 → 检查幂等 → 按快照评分 → 追加事实 → 更新相应投影与纠错队列 → 推进游标。没有有效选项的请求不形成知识错误。
+训练提交事务：检查幂等/既有attempt → 检查维护及会话/实例 → 按快照评分 → 追加事实 → 更新相应投影与纠错队列 → 推进游标并记录唯一反馈曝光；顺序以08为准。没有有效选项的请求不形成知识错误。
 
-下一题在短事务之外计算，再通过 `(session_id, cursor)` 唯一约束保留一个实例；重复请求返回同一实例。对同一实例的训练重复提交只返回既有反馈，不再次更新学习状态。
+下一题在事务外计算，保留事务内重查会话状态/游标、题库成员revision、内容发布状态和活动投影版本，通过 `(session_id, ordinal)` 唯一约束保留实例，ordinal取当时cursor；重试返回既有实例。同实例同答案重复返回原反馈，不同答案冲突，不再次更新状态。
 
 考试交卷事务：条件转换 open → submitted → 冻结草稿/时间线引用 → 评分 → 生成每题正式观测 → 按规则应用投影 → 保存报告。交卷与最后一次草稿写入用会话 revision 防止竞争；服务端设题量上限。
 
@@ -115,9 +116,9 @@ model_rebuild_run 保存起止版本、水位、事件数、结果摘要、完�
 ## 7. SQLite 运行约束
 
 - app.db 和 langgraph-checkpoints.db 物理分离；两种运行库都检查各自实际版本。
-- WAL 场景使用已修复 WAL-reset 缺陷的运行库。新实现建议 SQLite >= 3.51.3；官方回移修复版本 3.44.6、3.50.7 也已修复，只有选用旧分支时才考虑。[S07](06-sources.md)
+- 首版两种运行库均要求SQLite>=3.51.3，实测Go3.53.4/Python3.53.1。官方旧分支3.44.6、3.50.7亦有WAL修复，但不作为本项目冻结运行基线。[S07](06-sources.md)
 - 检查 Go 实际连接报告的 sqlite_version/source_id，而不是用系统 sqlite3 CLI 的版本代替。Python 的运行库也单独核对。
 - 每个业务连接启用 foreign_keys，配置 busy timeout；检查 journal_mode 设置实际返回 WAL。[S08](06-sources.md)
 - WAL 允许读写并行，但每个数据库仍只有一个并发写者。事务短小，不在事务中等待模型或外部网络。
-- 个人学习历史优先持久性，建议明确使用 synchronous=FULL；若以后选择其他模式，应记录耐久性取舍。
+- 个人学习历史优先持久性，冻结使用synchronous=FULL；以后更改需记录耐久性取舍并升级运行配置。
 - 数据文件放在本机文件系统，不把活动 WAL 数据库作为网络共享文件使用。备份采用一致性快照，详见验证文档。
