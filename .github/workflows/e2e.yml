@@ -1,0 +1,40 @@
+name: E2E
+
+on:
+  workflow_dispatch:
+    inputs:
+      module:
+        description: "E2E module to run (e.g. M00, M01). Leave blank for all."
+        required: false
+        default: ""
+
+jobs:
+  e2e:
+    name: End-to-End Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-toolchain
+
+      - name: Install E2E tools (Playwright + Chromium)
+        run: make e2e-tools
+
+      - name: Verify browser
+        run: make check-browser
+
+      - name: Build binaries
+        run: |
+          make build
+          make build-e2e
+
+      - name: Run E2E tests
+        run: make e2e MODULE=${{ github.event.inputs.module }}
+
+      - name: Upload traces and screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-artifacts
+          path: |
+            e2e/artifacts/
+          retention-days: 14
