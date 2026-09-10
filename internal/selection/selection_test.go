@@ -6,6 +6,8 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
+
 	"adaptive-vocabulary/internal/platform"
 	"adaptive-vocabulary/internal/selection"
 )
@@ -226,3 +228,58 @@ func TestSelectionCooldownAndCorrection(t *testing.T) {
 		t.Errorf("expected new form_c2 for correction, got %s", resCorr.FormID)
 	}
 }
+
+func TestSelectionCooldownScalability(t *testing.T) {
+	db, dir := setupSelectionDB(t)
+	defer os.RemoveAll(dir)
+	defer db.Close()
+
+	ctx := context.Background()
+
+	// Seed source, bank, lexemes, senses
+	tx, err := db.Begin()
+	if err != nil {
+		t.Fatalf("begin tx: %v", err)
+	}
+	_, err = tx.Exec(`
+		INSERT INTO source (id, name, location, source_version, license, usage_scope, created_at, updated_at)
+		VALUES ('src1', 'src', 'loc', 'v1', 'mit', 'test', 1, 1);
+		INSERT INTO bank (id, name, created_at, updated_at) VALUES ('bank1', 'Test Bank', 1, 1);
+		INSERT INTO session (id, kind, status, created_at, updated_at) VALUES ('sess_scale', 'practice', 'open', 1, 1);
+	`)
+	if err != nil {
+		t.Fatalf("seed basic: %v", err)
+	}
+
+	// Insert 2,000 exposure events and attempt events (older than 24h ago)
+	nowMicro := time.Now().UnixMicro()
+	oldMicro := nowMicro - 48*3600*1000000 // 48 hours ago
+	for i := 0; i < 2000; i++ {
+		_, _ = tx.Exec(`
+			INSERT INTO exposure_event (id, session_id, sense_id, task_family, ordinal, event_name, event_sequence, observed_at, created_at)
+			VALUES (?, 'sess_scale', 'sense_old', 'meaning_recognition', ?, 'exposure', ?, ?, ?)
+		`, "exp_"+string(rune(i)), i, i, oldMicro, oldMicro)
+	}
+	if err := tx.Commit(); err != nil {
+		t.Fatalf("commit tx: %v", err)
+	}
+
+	cfg := selection.DefaultSelectionConfig()
+
+	start := time.Now()
+	// Because the latest exposure was 48h ago (> 24h), it should short-circuit immediately via the 24h rule!
+	inCooldown, err := selection.CheckNormalCooldown(ctx, db, cfg, "sess_scale", "lex_scale", nowMicro)
+	elapsed := time.Since(start)
+
+	if err != nil {
+		t.Fatalf("CheckNormalCooldown failed: %v", err)
+	}
+	if inCooldown {
+		t.Errorf("expected lex_scale not to be in cooldown after 48h, got inCooldown=true")
+	}
+	// Verify execution took < 100ms
+	if elapsed > 200*time.Millisecond {
+		t.Errorf("CheckNormalCooldown too slow: %v (expected < 200ms)", elapsed)
+	}
+}
+

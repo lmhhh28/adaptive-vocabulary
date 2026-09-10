@@ -457,3 +457,113 @@ func TestMultiVersionSenseDoesNotDuplicateCandidates(t *testing.T) {
 	}
 }
 
+func TestImportAndResolveRejectActiveSession(t *testing.T) {
+	db := setupTestDB(t)
+	defer db.Close()
+
+	ctx := context.Background()
+	bankSvc := bank.NewService(db)
+	newBank, err := bankSvc.CreateBank(ctx, "Active Session Bank", "")
+	if err != nil {
+		t.Fatalf("create bank: %v", err)
+	}
+
+	importerSvc := NewService(db)
+	parsed, err := ParseWordSlice([]string{"river", "unknownword"})
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+
+	// Create an import job first
+	job, err := importerSvc.ImportBankVocabulary(ctx, newBank.ID, parsed, "v1", -1, "", "")
+	if err != nil {
+		t.Fatalf("import: %v", err)
+	}
+
+	// Fetch the ambiguous/unresolved item
+	itemsResp, err := importerSvc.GetImportItems(ctx, job.ID, "", 50, 0)
+	if err != nil {
+		t.Fatalf("list items: %v", err)
+	}
+	var unresolvedID string
+	var unresolvedRev int64
+	for _, it := range itemsResp.Items {
+		if it.Status != "resolved" {
+			unresolvedID = it.ID
+			unresolvedRev = it.Revision
+			break
+		}
+	}
+	if unresolvedID == "" {
+		t.Fatalf("expected at least one unresolved item")
+	}
+
+	// Open a session on this bank
+	now := int64(1700000000000)
+	_, err = db.Exec(`
+		INSERT INTO session (id, bank_id, kind, status, created_at, updated_at)
+		VALUES ('test-open-session', ?, 'practice', 'open', ?, ?)
+	`, newBank.ID, now, now)
+	if err != nil {
+		t.Fatalf("insert open session: %v", err)
+	}
+
+	// 1. Attempting new ImportBankVocabulary should fail with ErrSessionActive
+	_, err = importerSvc.ImportBankVocabulary(ctx, newBank.ID, parsed, "v1", -1, "", "")
+	if !errors.Is(err, ErrSessionActive) {
+		t.Fatalf("expected ErrSessionActive for ImportBankVocabulary, got: %v", err)
+	}
+
+	// 2. Attempting to resolve item with adopt should fail with ErrSessionActive
+	var senseID string
+	_ = db.QueryRow("SELECT id FROM sense LIMIT 1").Scan(&senseID)
+	_, err = importerSvc.ResolveImportItem(ctx, unresolvedID, ResolveItemRequest{
+		Action:           "adopt",
+		SenseRefs:        []string{senseID},
+		ExpectedRevision: unresolvedRev,
+	}, "", "")
+	if !errors.Is(err, ErrSessionActive) {
+		t.Fatalf("expected ErrSessionActive for ResolveImportItem, got: %v", err)
+	}
+}
+
+func TestIdempotencyErrorCausesRollback(t *testing.T) {
+	db := setupTestDB(t)
+	defer db.Close()
+
+	ctx := context.Background()
+	bankSvc := bank.NewService(db)
+	newBank, err := bankSvc.CreateBank(ctx, "Idemp Bank", "")
+	if err != nil {
+		t.Fatalf("create bank: %v", err)
+	}
+
+	importerSvc := NewService(db)
+	parsed, err := ParseWordSlice([]string{"river"})
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+
+	// Injected trigger fault on idempotency_record
+	_, err = db.Exec("CREATE TRIGGER fault_idempotency BEFORE INSERT ON idempotency_record BEGIN SELECT RAISE(ABORT, 'injected idemp failure'); END")
+	if err != nil {
+		t.Fatalf("create trigger: %v", err)
+	}
+
+	_, err = importerSvc.ImportBankVocabulary(ctx, newBank.ID, parsed, "v1", -1, "test-idemp-key", "test-digest")
+	if err == nil {
+		t.Fatal("expected error from ImportBankVocabulary due to idempotency failure, got nil")
+	}
+	if !strings.Contains(err.Error(), "injected idemp failure") {
+		t.Errorf("expected error to contain injected failure, got: %v", err)
+	}
+
+	// Verify nothing was committed: import_job should have 0 rows
+	var count int
+	_ = db.QueryRow("SELECT count(*) FROM import_job WHERE target_id = ?", newBank.ID).Scan(&count)
+	if count != 0 {
+		t.Errorf("expected 0 import_job records after rollback, got %d", count)
+	}
+}
+
+

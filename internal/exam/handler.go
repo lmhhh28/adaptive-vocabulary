@@ -40,9 +40,28 @@ func NewHandler(db *sql.DB, policyPath string) (*Handler, error) {
 		}
 	}
 
+	examPolicy, err := LoadExamPolicyFromPath(policyPath)
+	if err != nil {
+		candidates := []string{
+			policyPath,
+			filepath.Join("..", policyPath),
+			filepath.Join("..", "..", policyPath),
+		}
+		for _, c := range candidates {
+			if p, err2 := LoadExamPolicyFromPath(c); err2 == nil {
+				examPolicy = p
+				break
+			}
+		}
+		if examPolicy == nil {
+			def := DefaultExamPolicyConfig()
+			examPolicy = &def
+		}
+	}
+
 	learningSvc := learning.NewLearningService(db, *fsrsPolicy, "observation-v2", "")
-	assembler := NewAssembler(db, 20000)
-	svc := NewService(db, learningSvc, assembler)
+	assembler := NewAssembler(db, examPolicy.MaxSearchStates)
+	svc := NewServiceWithPolicy(db, learningSvc, assembler, *examPolicy)
 
 	return &Handler{
 		db:      db,

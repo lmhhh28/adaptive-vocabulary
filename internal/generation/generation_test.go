@@ -802,3 +802,67 @@ func TestOptionIdentityReusedWithoutDanglingReference(t *testing.T) {
 		t.Fatalf("expected 0 missing option identities, got %d", missing)
 	}
 }
+
+func TestClaimItemsEnforcesMaxConcurrentItemsAcrossWorkers(t *testing.T) {
+	db, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	policy := DefaultGenerationConfig()
+	policy.MaxConcurrentItems = 2
+	svc := NewService(db, policy)
+	ctx := context.Background()
+	now := time.Now().UTC().UnixMicro()
+
+	// 1. Get bank and senses
+	var bankID string
+	var bankRev int
+	err := db.QueryRow("SELECT id, revision FROM bank WHERE name = '开发样例'").Scan(&bankID, &bankRev)
+	if err != nil {
+		t.Fatalf("query bank: %v", err)
+	}
+
+	rows, err := db.Query("SELECT s.id, sv.id FROM sense s JOIN sense_version sv ON sv.sense_id = s.id JOIN bank_sense bs ON bs.sense_id = s.id WHERE bs.bank_id = ? LIMIT 3", bankID)
+	if err != nil {
+		t.Fatalf("query senses: %v", err)
+	}
+	defer rows.Close()
+
+	var senseRefs []SenseRef
+	for rows.Next() {
+		var ref SenseRef
+		_ = rows.Scan(&ref.SenseID, &ref.SenseVersionID)
+		senseRefs = append(senseRefs, ref)
+	}
+	if len(senseRefs) < 3 {
+		t.Fatalf("expected at least 3 senses in bank, got %d", len(senseRefs))
+	}
+
+	_, _, err = svc.CreateJob(ctx, bankID, CreateJobRequest{
+		SenseRefs:               senseRefs,
+		GenerationConfigVersion: "v1",
+		QualityPolicyVersion:    "v1",
+		ExpectedRevision:        bankRev,
+	}, "", "", now)
+	if err != nil {
+		t.Fatalf("create job failed: %v", err)
+	}
+
+	// Worker 1 claims with limit 2 -> gets 2 items
+	claim1, err := svc.ClaimItems(ctx, ClaimRequest{WorkerID: "w-1", Limit: 2}, now)
+	if err != nil {
+		t.Fatalf("claim1: %v", err)
+	}
+	if len(claim1.Items) != 2 {
+		t.Fatalf("expected 2 items claimed by worker 1, got %d", len(claim1.Items))
+	}
+
+	// Worker 2 claims with limit 2 -> should get 0 items because MaxConcurrentItems=2 is already active
+	claim2, err := svc.ClaimItems(ctx, ClaimRequest{WorkerID: "w-2", Limit: 2}, now)
+	if err != nil {
+		t.Fatalf("claim2: %v", err)
+	}
+	if len(claim2.Items) != 0 {
+		t.Fatalf("expected 0 items claimed by worker 2, got %d", len(claim2.Items))
+	}
+}
+

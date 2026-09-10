@@ -10,7 +10,7 @@ export UV_PYTHON_BIN_DIR := $(ROOT)/.tools/python-bin
 export LANGGRAPH_STRICT_MSGPACK := true
 export PLAYWRIGHT_BROWSERS_PATH := $(ROOT)/.tools/playwright
 
-.PHONY: bootstrap sync check content e2e-tools check-browser tasks task build build-e2e run test test-go test-worker e2e run-generation-lab quality-live
+.PHONY: bootstrap sync check content e2e-tools check-browser tasks task build build-e2e run test test-go test-race test-worker e2e run-generation-lab quality-live
 bootstrap:
 	python3 scripts/bootstrap.py
 
@@ -52,10 +52,13 @@ build-e2e:
 run: build
 	./bin/avocab serve --data-dir data/local --listen 127.0.0.1:8080 --policy config/policy-v2.json
 
-test: test-go test-worker
+test: test-go test-race test-worker
 
 test-go:
 	$(GO) test ./...
+
+test-race:
+	$(GO) test -race -count=1 ./...
 
 test-worker:
 	$(UV) run --directory worker --locked python -m unittest

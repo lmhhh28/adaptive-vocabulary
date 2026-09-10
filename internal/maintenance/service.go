@@ -9,14 +9,24 @@ import (
 	"time"
 
 	"adaptive-vocabulary/internal/core"
+	"adaptive-vocabulary/internal/learning"
 )
 
 type Service struct {
-	db *sql.DB
+	db         *sql.DB
+	fsrsPolicy *learning.FSRSPolicyConfig
 }
 
 func NewService(db *sql.DB) *Service {
 	return &Service{db: db}
+}
+
+func NewServiceWithPolicy(db *sql.DB, policy learning.FSRSPolicyConfig) *Service {
+	return &Service{db: db, fsrsPolicy: &policy}
+}
+
+func (s *Service) SetFSRSPolicy(policy learning.FSRSPolicyConfig) {
+	s.fsrsPolicy = &policy
 }
 
 func (s *Service) DB() *sql.DB {

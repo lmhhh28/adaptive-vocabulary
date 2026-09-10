@@ -234,6 +234,19 @@ func (a *Assembler) Assemble(tc *core.TxnContext, bankID string, quotas map[stri
 		})
 	}
 
+	// Quick feasibility check: ensure each family has at least requested quota,
+	// and pool has at least total requested questions.
+	totalRequired := 0
+	for fam, count := range quotas {
+		totalRequired += count
+		if len(byFamily[fam]) < count {
+			return nil, ErrConstraintUnsatisfied
+		}
+	}
+	if totalRequired <= 0 {
+		return nil, ErrConstraintUnsatisfied
+	}
+
 	// 4. Backtracking search to solve quotas and constraints
 	var requiredTasks []string
 	for fam, count := range quotas {

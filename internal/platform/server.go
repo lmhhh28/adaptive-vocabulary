@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"sync"
 	"syscall"
 	"time"
@@ -17,6 +18,7 @@ import (
 	"adaptive-vocabulary/internal/exam"
 	"adaptive-vocabulary/internal/generation"
 	"adaptive-vocabulary/internal/importer"
+	"adaptive-vocabulary/internal/learning"
 	"adaptive-vocabulary/internal/maintenance"
 	"adaptive-vocabulary/internal/practice"
 	"adaptive-vocabulary/internal/revision"
@@ -36,6 +38,7 @@ type Server struct {
 	Lock          *ProcessLock
 	Security      *SecurityConfig
 	ExamHandler   *exam.Handler
+	FSRSPolicy    *learning.FSRSPolicyConfig
 	SchemaVersion int
 	BaseURL       string
 	Listener      net.Listener
@@ -81,6 +84,21 @@ func NewServer(cfg *Config) (*Server, error) {
 		return nil, fmt.Errorf("init security config: %w", err)
 	}
 
+	fsrsPolicy, _ := learning.LoadFSRSPolicyFromPath(cfg.PolicyPath)
+	if fsrsPolicy == nil {
+		candidates := []string{
+			cfg.PolicyPath,
+			filepath.Join("..", cfg.PolicyPath),
+			filepath.Join("..", "..", cfg.PolicyPath),
+		}
+		for _, c := range candidates {
+			if p, err2 := learning.LoadFSRSPolicyFromPath(c); err2 == nil {
+				fsrsPolicy = p
+				break
+			}
+		}
+	}
+
 	examHandler, err := exam.NewHandler(db.DB, cfg.PolicyPath)
 	if err != nil {
 		_ = db.Close()
@@ -101,6 +119,7 @@ func NewServer(cfg *Config) (*Server, error) {
 		Lock:          lock,
 		Security:      security,
 		ExamHandler:   examHandler,
+		FSRSPolicy:    fsrsPolicy,
 		SchemaVersion: schemaVersion,
 	}, nil
 }
@@ -165,7 +184,12 @@ func (s *Server) Start() error {
 	generationHandler.RegisterRoutes(mux)
 
 	// Maintenance routes
-	maintService := maintenance.NewService(s.DB.DB)
+	var maintService *maintenance.Service
+	if s.FSRSPolicy != nil {
+		maintService = maintenance.NewServiceWithPolicy(s.DB.DB, *s.FSRSPolicy)
+	} else {
+		maintService = maintenance.NewService(s.DB.DB)
+	}
 	maintHandler := maintenance.NewHandler(maintService)
 	maintHandler.RegisterRoutes(mux)
 

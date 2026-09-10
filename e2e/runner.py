@@ -66,7 +66,8 @@ def execute_case(case_file: Path, context: dict, timeout: float) -> dict:
 
 
 def discover_cases(module: str) -> list[tuple[str, Path]]:
-    if module.lower() == "all":
+    mod = (module or "").strip().lower()
+    if not mod or mod == "all":
         cases = []
         for mod_dir in sorted(CASES_DIR.glob("M*")):
             if mod_dir.is_dir():
@@ -91,7 +92,7 @@ def main():
     if sys.flags.optimize:
         parser.error("Optimized Python disables acceptance assertions; unset PYTHONOPTIMIZE")
 
-    module = args.module
+    module = (args.module or "").strip() or "all"
     cases = discover_cases(module)
     if not cases:
         print(f"ERROR: Zero test cases found for module {module}. Runner requires implemented tests.", file=sys.stderr)

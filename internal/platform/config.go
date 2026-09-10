@@ -19,6 +19,7 @@ type PolicyData struct {
 	Observation     map[string]any `json:"observation_eligibility"`
 	Selection       map[string]any `json:"selection"`
 	Generation      map[string]any `json:"generation"`
+	Exam            map[string]any `json:"exam"`
 	Raw             map[string]any `json:"-"`
 }
 

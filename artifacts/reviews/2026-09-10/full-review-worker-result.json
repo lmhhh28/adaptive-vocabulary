@@ -1,0 +1,5 @@
+{
+  "exception": "argument of type 'NoneType' is not iterable",
+  "settlement_calls": 1,
+  "complete_calls": 0
+}

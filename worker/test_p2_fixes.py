@@ -138,6 +138,65 @@ class TestWorkerP2Fixes(unittest.TestCase):
         self.assertIn("exactly one correct option", res["current_feedback"])
         conn.close()
 
+    def test_json_non_dict_raises_provider_error(self):
+        import httpx
+        from avocab_worker.provider_client import ProviderError
+        provider = ProviderClient("http://127.0.0.1:9999", "probe-key")
+        provider._client.close()
+        provider._client = httpx.Client(
+            base_url="http://127.0.0.1:9999",
+            transport=httpx.MockTransport(
+                lambda req: httpx.Response(200, json={
+                    "id": "req-1",
+                    "choices": [{"message": {"content": "null"}}],
+                    "usage": {"prompt_tokens": 5, "completion_tokens": 1}
+                })
+            )
+        )
+        try:
+            with self.assertRaises(ProviderError) as ctx:
+                provider.call_chat_completion([{"role": "user", "content": "hi"}], "model", 100)
+            self.assertIn("non-dict JSON content", str(ctx.exception))
+        finally:
+            provider.close()
+
+    def test_generator_retries_on_503(self):
+        from avocab_worker.provider_client import ProviderResponseError
+        go_client = MagicMock(spec=GoGenerationClient)
+        go_client.reserve.return_value = {"reservation_id": "retry-res"}
+        gen_client = MagicMock(spec=ProviderClient)
+        gen_client.call_chat_completion.side_effect = ProviderResponseError(503, "Service Unavailable")
+        cfg = WorkerConfig(
+            data_dir=Path("/tmp"),
+            server_url="http://test",
+            worker_token="tok",
+            profile={**self.profile, "max_network_attempts_per_call": 3},
+        )
+        conn = sqlite3.connect(":memory:", check_same_thread=False)
+        workflow = GenerationWorkflow(
+            go_client=go_client,
+            provider_client=gen_client,
+            config=cfg,
+            checkpointer=SqliteSaver(conn),
+        )
+        state: WorkerState = {
+            "item_id": "item-retry",
+            "job_id": "job-retry",
+            "fixed_input": {"required_task_families": ["meaning_recognition"], "word": "test"},
+            "input_digest": "digest-1",
+            "fencing_token": 100,
+            "attempt_number": 1,
+            "candidate_index": 0,
+            "generator_reservation_id": "gen-res-1",
+            "status": "processing",
+        }
+        res = workflow._node_call_generator(state)
+        # Should attempt 3 times
+        self.assertEqual(gen_client.call_chat_completion.call_count, 3)
+        self.assertEqual(res["status"], "failed")
+        conn.close()
+
 
 if __name__ == "__main__":
     unittest.main()
+

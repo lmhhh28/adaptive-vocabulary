@@ -430,3 +430,66 @@ func TestRecordTelemetryGapIdempotentReplayAfterClosure(t *testing.T) {
 		t.Errorf("expected current revision %d, got %d", gapResp.CurrentRevision, replayedGap.CurrentRevision)
 	}
 }
+
+func TestCreateExamMaxQuestionsCap(t *testing.T) {
+	_, svc := setupTestDB(t, "core")
+	ctx := context.Background()
+	bankID := "00000000-0000-4000-8000-000000000801"
+
+	// Requesting question_count = 201 should be rejected when maxQuestions is 200
+	_, _, err := svc.CreateExam(ctx, exam.CreateExamRequest{
+		BankID:        bankID,
+		QuestionCount: 201,
+	}, "test-key-excessive", "digest-excessive")
+	if err == nil {
+		t.Fatal("expected error when question_count exceeds maxQuestions, got nil")
+	}
+	if !errors.Is(err, exam.ErrInvalidRequest) {
+		t.Fatalf("expected ErrInvalidRequest, got: %v", err)
+	}
+	if !strings.Contains(err.Error(), "question_count exceeds maximum allowed") {
+		t.Errorf("expected error message to mention question_count exceeds maximum allowed, got: %v", err)
+	}
+}
+
+func TestSettleExpiredExamsErrorPropagation(t *testing.T) {
+	db, svc := setupTestDB(t, "core")
+	ctx := context.Background()
+	bankID := "00000000-0000-4000-8000-000000000801"
+
+	// Create a timed exam
+	timeLimitSec := 60
+	createResp, _, err := svc.CreateExam(ctx, exam.CreateExamRequest{
+		BankID:           bankID,
+		QuestionCount:    2,
+		TimeLimitSeconds: &timeLimitSec,
+	}, "key-timed", "digest-timed")
+	if err != nil {
+		t.Fatalf("CreateExam failed: %v", err)
+	}
+
+	// Update session deadline to be in the past
+	pastMicro := time.Now().Add(-1 * time.Hour).UnixMicro()
+	_, err = db.Exec("UPDATE session SET deadline_at = ? WHERE id = ?", pastMicro, createResp.ExamID)
+	if err != nil {
+		t.Fatalf("update deadline failed: %v", err)
+	}
+
+	// Inject a trigger fault on assessment_result to simulate settlement failure
+	_, err = db.Exec("CREATE TRIGGER test_fault_settlement BEFORE INSERT ON assessment_result BEGIN SELECT RAISE(ABORT, 'injected settlement failure'); END")
+	if err != nil {
+		t.Fatalf("create trigger failed: %v", err)
+	}
+	defer func() {
+		_, _ = db.Exec("DROP TRIGGER IF EXISTS test_fault_settlement")
+	}()
+
+	_, err = svc.SettleExpiredExams(ctx)
+	if err == nil {
+		t.Fatal("expected SettleExpiredExams to propagate settlement error, got nil")
+	}
+	if !strings.Contains(err.Error(), "injected settlement failure") {
+		t.Errorf("expected error to contain 'injected settlement failure', got: %v", err)
+	}
+}
+

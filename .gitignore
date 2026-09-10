@@ -6,6 +6,8 @@ data/
 /artifacts/*
 !/artifacts/quality-benchmark/
 !/artifacts/reviews/
+artifacts/reviews/**/full-review-probes-*/
+artifacts/reviews/**/full-review-verification-*/
 worker/artifacts/
 *.db
 *.db-wal

@@ -1,0 +1,74 @@
+package main
+
+import (
+ "context"
+ "database/sql"
+ "fmt"
+ "runtime"
+ "strings"
+ "testing"
+ "time"
+ "adaptive-vocabulary/internal/platform"
+ "adaptive-vocabulary/internal/core"
+ "adaptive-vocabulary/internal/exam"
+ "adaptive-vocabulary/internal/selection"
+ _ "modernc.org/sqlite"
+)
+
+func reviewDB(t *testing.T) *sql.DB {
+ t.Helper()
+ db, err := sql.Open("sqlite", ":memory:"); if err != nil { t.Fatal(err) }
+ db.SetMaxOpenConns(1); t.Cleanup(func(){ db.Close() })
+ return db
+}
+
+func TestReviewExamQuotaAllocation(t *testing.T){
+ db:=reviewDB(t);if _,err:=platform.RunMigrations(db);err!=nil{t.Fatal(err)}
+ quotas,err:=exam.ResolveQuotas(1000000,nil);if err!=nil{t.Fatal(err)}
+ assembler:=exam.NewAssembler(db,1)
+ runtime.GC();var before,after runtime.MemStats;runtime.ReadMemStats(&before)
+ err=core.RunInTx(context.Background(),db,func(tc *core.TxnContext)error{_,err:=assembler.Assemble(tc,"empty-bank",quotas);return err})
+ runtime.ReadMemStats(&after)
+ if err!=exam.ErrConstraintUnsatisfied{t.Fatal(err)}
+ t.Logf("1000000 requested questions, empty pool, search limit=1: allocated=%d bytes, result=%v",after.TotalAlloc-before.TotalAlloc,err)
+}
+func reviewExec(t *testing.T, db *sql.DB, query string) {
+ t.Helper(); if _,err:=db.Exec(query);err!=nil {t.Fatal(err)}
+}
+func reviewPlan(t *testing.T, db *sql.DB, query string, args ...any) string {
+ t.Helper(); rows,err:=db.Query("EXPLAIN QUERY PLAN "+query,args...);if err!=nil {t.Fatal(err)};defer rows.Close()
+ var parts []string
+ for rows.Next(){var a,b,c int;var detail string;if err:=rows.Scan(&a,&b,&c,&detail);err!=nil{t.Fatal(err)};parts=append(parts,detail)}
+ if err:=rows.Err();err!=nil{t.Fatal(err)};return strings.Join(parts,"; ")
+}
+func TestReviewSQLPlans(t *testing.T) {
+ db:=reviewDB(t);if _,err:=platform.RunMigrations(db);err!=nil{t.Fatal(err)}
+ revisionQuery:="SELECT revision_kind FROM event_revision WHERE (event_id = ? OR event_id = ?) ORDER BY created_at DESC, id DESC LIMIT 1"
+ t.Log("revision plan:",reviewPlan(t,db,revisionQuery,"attempt-x","instance-x"))
+ t.Log("claim plan:",reviewPlan(t,db,"SELECT id FROM generation_item WHERE status = 'pending' OR (status = 'claimed' AND lease_until < ?) ORDER BY created_at ASC LIMIT ?",100,2))
+ t.Log("form exposure plan:",reviewPlan(t,db,"SELECT max(observed_at) FROM exposure_event WHERE form_id=? AND kind='reserved'","form-x"))
+ tx,err:=db.Begin();if err!=nil{t.Fatal(err)}
+ stmt,err:=tx.Prepare("INSERT INTO event_revision(id,event_id,event_type,revision_kind,reason,created_at) VALUES(?,?,'attempt_event','invalidate','probe',?)");if err!=nil{t.Fatal(err)}
+ for i:=0;i<100000;i++ {if _,err=stmt.Exec(fmt.Sprint(i),fmt.Sprintf("event-%d",i),i);err!=nil{t.Fatal(err)}}
+ stmt.Close();if err=tx.Commit();err!=nil{t.Fatal(err)}
+ measure:=func()time.Duration{start:=time.Now();for i:=0;i<100;i++{var kind string;err:=db.QueryRow(revisionQuery,"attempt-x","instance-x").Scan(&kind);if err!=sql.ErrNoRows{t.Fatal(err)}};return time.Since(start)}
+ before:=measure()
+ reviewExec(t,db,"CREATE INDEX review_revision_idx ON event_revision(event_id,created_at DESC,id DESC)")
+ after:=measure()
+ t.Logf("100 lookups / 100000 revisions: existing=%s indexed=%s ratio=%.1f",before,after,float64(before)/float64(after))
+}
+
+func TestReviewCooldownGrowth(t *testing.T){
+ db:=reviewDB(t)
+ reviewExec(t,db,"CREATE TABLE exposure_event(lexeme_id TEXT,kind TEXT,observed_at INTEGER,event_sequence INTEGER,source_instance_id TEXT); CREATE INDEX idx_exposure_event_cooldown ON exposure_event(lexeme_id,kind,observed_at,event_sequence); CREATE TABLE question_instance(id TEXT PRIMARY KEY,session_id TEXT); CREATE TABLE sense(id TEXT PRIMARY KEY,lexeme_id TEXT); CREATE TABLE attempt_event(sense_id TEXT,source TEXT,purpose TEXT,observed_at INTEGER,event_sequence INTEGER); CREATE INDEX idx_attempt_event_cooldown ON attempt_event(source,purpose,observed_at,event_sequence)")
+ reviewExec(t,db,"INSERT INTO question_instance VALUES('instance','old-session'); INSERT INTO sense VALUES('s1','other-1'),('s2','other-2'),('s3','other-3'),('s4','other-4'),('s5','other-5')")
+ tx,err:=db.Begin();if err!=nil{t.Fatal(err)}
+ for i:=0;i<500;i++{if _,err=tx.Exec("INSERT INTO exposure_event VALUES(?,'reserved',1,1,'instance')",fmt.Sprint(i));err!=nil{t.Fatal(err)}}
+ st,err:=tx.Prepare("INSERT INTO attempt_event VALUES(?,'practice','normal',?,?)");if err!=nil{t.Fatal(err)}
+ for i:=0;i<50000;i++{if _,err=st.Exec(fmt.Sprintf("s%d",i%5+1),i+2,i+2);err!=nil{t.Fatal(err)}}
+ st.Close();if err=tx.Commit();err!=nil{t.Fatal(err)}
+ cfg:=selection.SelectionConfig{NormalDistinctLexemeGap:5,NewSessionCooldownReleaseHours:24}
+ start:=time.Now()
+ for i:=0;i<500;i++{blocked,err:=selection.CheckNormalCooldown(context.Background(),db,cfg,"new-session",fmt.Sprint(i),200000000000);if err!=nil||blocked{t.Fatalf("blocked=%v err=%v",blocked,err)}}
+ t.Logf("500 previously seen lexemes / 50000 subsequent attempts: cooldown pass=%s",time.Since(start))
+}

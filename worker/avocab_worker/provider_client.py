@@ -70,7 +70,9 @@ class ProviderClient:
 
         # Attempt 1: strict=False to allow unescaped newlines/control chars
         try:
-            return json.loads(s, strict=False)
+            res = json.loads(s, strict=False)
+            if isinstance(res, dict):
+                return res
         except Exception:
             pass
 
@@ -78,7 +80,9 @@ class ProviderClient:
         m = re.search(r"\{.*\}", s, re.DOTALL)
         if m:
             try:
-                return json.loads(m.group(0), strict=False)
+                res = json.loads(m.group(0), strict=False)
+                if isinstance(res, dict):
+                    return res
             except Exception:
                 pass
 
@@ -122,7 +126,10 @@ class ProviderClient:
         except Exception:
             pass
 
-        return json.loads(s)
+        parsed = json.loads(s)
+        if isinstance(parsed, dict):
+            return parsed
+        raise ProviderError(f"Provider returned non-dict JSON content: {type(parsed).__name__}")
 
     def call_chat_completion(
         self,
@@ -179,4 +186,6 @@ class ProviderClient:
                 usage=usage_dict
             )
         except Exception as exc:
+            if isinstance(exc, ProviderError):
+                raise
             raise ProviderError(f"Failed to parse provider response: {exc}") from exc

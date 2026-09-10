@@ -31,7 +31,7 @@ jobs:
           make build-e2e
 
       - name: Run E2E tests
-        run: make e2e MODULE=${{ github.event.inputs.module }}
+        run: make e2e MODULE=${{ github.event.inputs.module || 'all' }}
 
       - name: Upload traces and screenshots
         if: always()

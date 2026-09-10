@@ -2,6 +2,7 @@
 import json
 from pathlib import Path
 import sqlite3
+import time
 from typing import Any, Optional, TypedDict
 import uuid
 
@@ -20,7 +21,20 @@ from .go_client import (
     LeaseLostError,
 )
 from .prompts import build_evaluator_prompt, build_generator_prompt
-from .provider_client import ProviderClient, ProviderError
+from .provider_client import (
+    ProviderClient,
+    ProviderError,
+    ProviderNetworkError,
+    ProviderResponseError,
+)
+
+
+def _is_retryable_provider_error(exc: Exception) -> bool:
+    if isinstance(exc, ProviderNetworkError):
+        return True
+    if isinstance(exc, ProviderResponseError):
+        return exc.status_code in (408, 429, 500, 502, 503, 504)
+    return False
 
 
 class WorkerState(TypedDict, total=False):
@@ -178,33 +192,73 @@ class GenerationWorkflow:
 
         messages = build_generator_prompt(fixed_input, task_family, feedback)
 
-        try:
-            call_res = self.provider_client.call_chat_completion(
-                messages=messages,
-                model=self.config.generator_cfg.get("model"),
-                max_tokens=self.config.generator_cfg.get("max_output_tokens", 512)
-            )
-        except ProviderError as exc:
-            # Settle as network_error
+        item_id = state["item_id"]
+        fencing_token = state["fencing_token"]
+        input_digest = state["input_digest"]
+        attempt_number = state.get("attempt_number", 1)
+        candidate_index = state.get("candidate_index", 0)
+
+        max_attempts = self.config.profile.get("max_network_attempts_per_call", 3)
+        current_res_id = res_id
+        call_res = None
+
+        for net_attempt in range(1, max_attempts + 1):
             try:
-                self.go_client.settle(
-                    reservation_id=res_id,
-                    item_id=state["item_id"],
-                    fencing_token=state["fencing_token"],
-                    input_digest=state["input_digest"],
-                    outcome="network_error"
+                call_res = self.provider_client.call_chat_completion(
+                    messages=messages,
+                    model=self.config.generator_cfg.get("model"),
+                    max_tokens=self.config.generator_cfg.get("max_output_tokens", 512)
                 )
-            except Exception:
-                pass
-            return {"status": "failed", "lease_lost": False, "stop_reason": f"Provider call failed: {exc}"}
+                break
+            except Exception as exc:
+                # Settle current reservation as network_error
+                try:
+                    self.go_client.settle(
+                        reservation_id=current_res_id,
+                        item_id=item_id,
+                        fencing_token=fencing_token,
+                        input_digest=input_digest,
+                        outcome="network_error"
+                    )
+                except Exception:
+                    pass
+
+                if net_attempt < max_attempts and _is_retryable_provider_error(exc):
+                    time.sleep(min(0.2 * (2 ** (net_attempt - 1)), 2.0))
+                    logical_call_key = {
+                        "attempt_number": attempt_number,
+                        "stage": "generator",
+                        "candidate_index": candidate_index
+                    }
+                    try:
+                        resp = self.go_client.reserve(
+                            item_id=item_id,
+                            fencing_token=fencing_token,
+                            input_digest=input_digest,
+                            logical_call_key=logical_call_key,
+                            network_attempt_id=str(uuid.uuid4()),
+                            profile_version=self.config.config_version,
+                            input_sha256=f"input-sha-{item_id}-{candidate_index}",
+                            input_token_estimate=150,
+                            max_output_tokens=self.config.generator_cfg.get("max_output_tokens", 512)
+                        )
+                        current_res_id = resp["reservation_id"]
+                    except (BudgetExhaustedError, LeaseLostError) as reserve_exc:
+                        lease_lost = isinstance(reserve_exc, LeaseLostError)
+                        status = "budget_exhausted" if isinstance(reserve_exc, BudgetExhaustedError) else "failed"
+                        return {"status": status, "lease_lost": lease_lost, "stop_reason": str(reserve_exc)}
+                    except Exception as reserve_exc:
+                        return {"status": "failed", "lease_lost": False, "stop_reason": f"Retry reservation failed: {reserve_exc}"}
+                else:
+                    return {"status": "failed", "lease_lost": False, "stop_reason": f"Provider call failed: {exc}"}
 
         # Settle success with Go
         try:
             self.go_client.settle(
-                reservation_id=res_id,
-                item_id=state["item_id"],
-                fencing_token=state["fencing_token"],
-                input_digest=state["input_digest"],
+                reservation_id=current_res_id,
+                item_id=item_id,
+                fencing_token=fencing_token,
+                input_digest=input_digest,
                 outcome="response",
                 provider_request_id=call_res.provider_request_id,
                 response_sha256=call_res.response_sha256,
@@ -220,11 +274,14 @@ class GenerationWorkflow:
             raise RuntimeError("Simulated worker crash after generator response")
 
         candidate_content = call_res.content
+        if not isinstance(candidate_content, dict):
+            return {"status": "failed", "lease_lost": False, "stop_reason": f"Expected dict content from generator, got {type(candidate_content).__name__}"}
+
         # Ensure task_family is present
         if "task_family" not in candidate_content:
             candidate_content["task_family"] = task_family
 
-        return {"candidate_content": candidate_content}
+        return {"candidate_content": candidate_content, "generator_reservation_id": current_res_id}
 
     def _node_reserve_evaluators(self, state: WorkerState) -> dict[str, Any]:
         if state.get("status") in ("budget_exhausted", "failed"):
@@ -288,19 +345,28 @@ class GenerationWorkflow:
         fixed_input = state["fixed_input"]
 
         evaluations = []
-        for eval_idx, res_id in enumerate(res_ids[:2]):
+        max_attempts = self.config.profile.get("max_network_attempts_per_call", 3)
+        attempt_number = state.get("attempt_number", 1)
+        candidate_index = state.get("candidate_index", 0)
+
+        for eval_idx, initial_res_id in enumerate(res_ids[:2]):
             messages = build_evaluator_prompt(fixed_input, candidate_content, eval_idx)
-            try:
-                call_res = self.evaluator_client.call_chat_completion(
-                    messages=messages,
-                    model=self.config.evaluator_cfg.get("model"),
-                    max_tokens=self.config.evaluator_cfg.get("max_output_tokens", 256)
-                )
-            except ProviderError as exc:
-                for rid in res_ids[eval_idx:2]:
+            current_res_id = initial_res_id
+            call_res = None
+
+            for net_attempt in range(1, max_attempts + 1):
+                try:
+                    call_res = self.evaluator_client.call_chat_completion(
+                        messages=messages,
+                        model=self.config.evaluator_cfg.get("model"),
+                        max_tokens=self.config.evaluator_cfg.get("max_output_tokens", 256)
+                    )
+                    break
+                except Exception as exc:
+                    # Settle current reservation as network_error
                     try:
                         self.go_client.settle(
-                            reservation_id=rid,
+                            reservation_id=current_res_id,
                             item_id=state["item_id"],
                             fencing_token=state["fencing_token"],
                             input_digest=state["input_digest"],
@@ -308,11 +374,73 @@ class GenerationWorkflow:
                         )
                     except Exception:
                         pass
-                return {"status": "failed", "lease_lost": False, "stop_reason": f"Evaluator call failed: {exc}"}
+
+                    if net_attempt < max_attempts and _is_retryable_provider_error(exc):
+                        time.sleep(min(0.2 * (2 ** (net_attempt - 1)), 2.0))
+                        logical_call_key = {
+                            "attempt_number": attempt_number,
+                            "stage": "evaluator",
+                            "candidate_index": candidate_index,
+                            "evaluation_index": eval_idx
+                        }
+                        try:
+                            resp = self.go_client.reserve(
+                                item_id=state["item_id"],
+                                fencing_token=state["fencing_token"],
+                                input_digest=state["input_digest"],
+                                logical_call_key=logical_call_key,
+                                network_attempt_id=str(uuid.uuid4()),
+                                profile_version=self.config.config_version,
+                                input_sha256=f"eval-sha-{state['item_id']}-{candidate_index}-{eval_idx}",
+                                input_token_estimate=120,
+                                max_output_tokens=self.config.evaluator_cfg.get("max_output_tokens", 256)
+                            )
+                            current_res_id = resp["reservation_id"]
+                        except (BudgetExhaustedError, LeaseLostError) as reserve_exc:
+                            lease_lost = isinstance(reserve_exc, LeaseLostError)
+                            status = "budget_exhausted" if isinstance(reserve_exc, BudgetExhaustedError) else "failed"
+                            for rid in res_ids[eval_idx+1:2]:
+                                try:
+                                    self.go_client.settle(
+                                        reservation_id=rid,
+                                        item_id=state["item_id"],
+                                        fencing_token=state["fencing_token"],
+                                        input_digest=state["input_digest"],
+                                        outcome="network_error"
+                                    )
+                                except Exception:
+                                    pass
+                            return {"status": status, "lease_lost": lease_lost, "stop_reason": str(reserve_exc)}
+                        except Exception as reserve_exc:
+                            for rid in res_ids[eval_idx+1:2]:
+                                try:
+                                    self.go_client.settle(
+                                        reservation_id=rid,
+                                        item_id=state["item_id"],
+                                        fencing_token=state["fencing_token"],
+                                        input_digest=state["input_digest"],
+                                        outcome="network_error"
+                                    )
+                                except Exception:
+                                    pass
+                            return {"status": "failed", "lease_lost": False, "stop_reason": f"Retry reservation failed: {reserve_exc}"}
+                    else:
+                        for rid in res_ids[eval_idx+1:2]:
+                            try:
+                                self.go_client.settle(
+                                    reservation_id=rid,
+                                    item_id=state["item_id"],
+                                    fencing_token=state["fencing_token"],
+                                    input_digest=state["input_digest"],
+                                    outcome="network_error"
+                                )
+                            except Exception:
+                                pass
+                        return {"status": "failed", "lease_lost": False, "stop_reason": f"Evaluator call failed: {exc}"}
 
             try:
                 self.go_client.settle(
-                    reservation_id=res_id,
+                    reservation_id=current_res_id,
                     item_id=state["item_id"],
                     fencing_token=state["fencing_token"],
                     input_digest=state["input_digest"],

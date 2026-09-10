@@ -27,33 +27,37 @@ func CheckNormalCooldown(ctx context.Context, db *sql.DB, cfg SelectionConfig, s
 		return false, fmt.Errorf("query latest reservation for lexeme: %w", err)
 	}
 
-	// Count distinct other lexemes with normal or early_review practice submissions since that reservation
-	queryDistinct := `
-		SELECT count(DISTINCT s.lexeme_id)
-		FROM attempt_event a
-		JOIN sense s ON s.id = a.sense_id
-		WHERE s.lexeme_id != ?
-		  AND a.source = 'practice'
-		  AND a.purpose IN ('normal', 'early_review')
-		  AND (a.observed_at > ? OR (a.observed_at = ? AND a.event_sequence > ?))
-	`
-	var distinctCount int
-	err = db.QueryRowContext(ctx, queryDistinct, lexemeID, lastObservedAt, lastObservedAt, lastSeq).Scan(&distinctCount)
-	if err != nil {
-		return false, fmt.Errorf("count distinct other lexemes for normal cooldown: %w", err)
-	}
-
-	if distinctCount >= cfg.NormalDistinctLexemeGap {
-		return false, nil
-	}
-
-	// Check 24-hour release in a new session
+	// Check 24-hour release in a new session first (fast exit without scanning history)
 	if resSessionID != sessionID {
 		diffMicro := nowMicro - lastObservedAt
 		diffHours := float64(diffMicro) / (3600.0 * 1000000.0)
 		if diffHours >= float64(cfg.NewSessionCooldownReleaseHours) {
 			return false, nil
 		}
+	}
+
+	// Count distinct other lexemes with normal or early_review practice submissions since that reservation.
+	// Stop early once reaching cfg.NormalDistinctLexemeGap.
+	queryDistinct := `
+		SELECT count(*) FROM (
+			SELECT DISTINCT s.lexeme_id
+			FROM attempt_event a
+			JOIN sense s ON s.id = a.sense_id
+			WHERE s.lexeme_id != ?
+			  AND a.source = 'practice'
+			  AND a.purpose IN ('normal', 'early_review')
+			  AND (a.observed_at > ? OR (a.observed_at = ? AND a.event_sequence > ?))
+			LIMIT ?
+		)
+	`
+	var distinctCount int
+	err = db.QueryRowContext(ctx, queryDistinct, lexemeID, lastObservedAt, lastObservedAt, lastSeq, cfg.NormalDistinctLexemeGap).Scan(&distinctCount)
+	if err != nil {
+		return false, fmt.Errorf("count distinct other lexemes for normal cooldown: %w", err)
+	}
+
+	if distinctCount >= cfg.NormalDistinctLexemeGap {
+		return false, nil
 	}
 
 	return true, nil
@@ -82,16 +86,19 @@ func CheckCorrectionEligibility(ctx context.Context, db *sql.DB, cfg SelectionCo
 	}
 
 	queryDistinct := `
-		SELECT count(DISTINCT s.lexeme_id)
-		FROM attempt_event a
-		JOIN sense s ON s.id = a.sense_id
-		WHERE s.lexeme_id != ?
-		  AND a.source = 'practice'
-		  AND a.purpose IN ('normal', 'early_review', 'correction')
-		  AND a.event_sequence > ?
+		SELECT count(*) FROM (
+			SELECT DISTINCT s.lexeme_id
+			FROM attempt_event a
+			JOIN sense s ON s.id = a.sense_id
+			WHERE s.lexeme_id != ?
+			  AND a.source = 'practice'
+			  AND a.purpose IN ('normal', 'early_review', 'correction')
+			  AND a.event_sequence > ?
+			LIMIT ?
+		)
 	`
 	var distinctCount int
-	err = db.QueryRowContext(ctx, queryDistinct, lexemeID, triggeringSeq).Scan(&distinctCount)
+	err = db.QueryRowContext(ctx, queryDistinct, lexemeID, triggeringSeq, cfg.CorrectionDistinctLexemeGap).Scan(&distinctCount)
 	if err != nil {
 		return false, 0, fmt.Errorf("count distinct other lexemes for correction: %w", err)
 	}

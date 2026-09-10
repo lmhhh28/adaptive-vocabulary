@@ -113,7 +113,17 @@ func loadFSRSPolicy() learning.FSRSPolicyConfig {
 
 // ExecuteReplay replays projections up to run.FixedWatermark and atomically switches active_version on success.
 func (s *Service) ExecuteReplay(ctx context.Context, run *ModelRebuildRun) error {
-	learnSvc := learning.NewLearningService(s.db, loadFSRSPolicy(), "observation-v2", run.TargetProjectionVersion)
+	var policy learning.FSRSPolicyConfig
+	if s.fsrsPolicy != nil && len(s.fsrsPolicy.Weights) > 0 {
+		policy = *s.fsrsPolicy
+	} else {
+		policy = loadFSRSPolicy()
+	}
+	if len(policy.Weights) == 0 {
+		return errors.New("cannot execute replay: FSRS policy configuration is missing or invalid")
+	}
+
+	learnSvc := learning.NewLearningService(s.db, policy, "observation-v2", run.TargetProjectionVersion)
 	if err := learnSvc.ReplayProjections(ctx, run.TargetProjectionVersion, run.FixedWatermark); err != nil {
 		now := NowMicro()
 		errMsg := err.Error()

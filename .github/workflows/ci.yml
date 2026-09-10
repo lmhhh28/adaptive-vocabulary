@@ -30,6 +30,8 @@ jobs:
       - uses: ./.github/actions/setup-toolchain
       - name: Run Go tests
         run: make test-go
+      - name: Run Go tests with race detector
+        run: make test-race
       - name: Run Worker tests
         run: make test-worker
 

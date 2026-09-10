@@ -65,16 +65,30 @@ type Service struct {
 	db              *sql.DB
 	learningService *learning.LearningService
 	assembler       *Assembler
+	maxQuestions    int
 }
 
 func NewService(db *sql.DB, learningService *learning.LearningService, assembler *Assembler) *Service {
+	return NewServiceWithPolicy(db, learningService, assembler, DefaultExamPolicyConfig())
+}
+
+func NewServiceWithPolicy(db *sql.DB, learningService *learning.LearningService, assembler *Assembler, policy ExamPolicyConfig) *Service {
 	if assembler == nil {
-		assembler = NewAssembler(db, 20000)
+		maxSearch := policy.MaxSearchStates
+		if maxSearch <= 0 {
+			maxSearch = 10000
+		}
+		assembler = NewAssembler(db, maxSearch)
+	}
+	maxQ := policy.MaxQuestions
+	if maxQ <= 0 {
+		maxQ = 200
 	}
 	return &Service{
 		db:              db,
 		learningService: learningService,
 		assembler:       assembler,
+		maxQuestions:    maxQ,
 	}
 }
 
@@ -100,6 +114,9 @@ func (s *Service) CreateExam(
 ) (*CreateExamResponse, bool, error) {
 	if req.QuestionCount <= 0 {
 		return nil, false, fmt.Errorf("%w: question_count must be positive", ErrInvalidRequest)
+	}
+	if req.QuestionCount > s.maxQuestions {
+		return nil, false, fmt.Errorf("%w: question_count exceeds maximum allowed of %d", ErrInvalidRequest, s.maxQuestions)
 	}
 	if req.TimeLimitSeconds != nil {
 		if *req.TimeLimitSeconds < 60 || *req.TimeLimitSeconds > 14400 {
@@ -1365,14 +1382,22 @@ func (s *Service) SettleExpiredExams(ctx context.Context) (int, error) {
 	}
 
 	settled := 0
+	var firstErr error
 	for _, examID := range expiredIDs {
 		err := core.RunInTx(ctx, s.db, func(tc *core.TxnContext) error {
 			_, err := s.submitExamInternal(tc, examID, "startup_settle", true)
 			return err
 		})
-		if err == nil {
+		if err != nil {
+			if firstErr == nil {
+				firstErr = fmt.Errorf("settle expired exam %s: %w", examID, err)
+			}
+		} else {
 			settled++
 		}
+	}
+	if firstErr != nil {
+		return settled, firstErr
 	}
 
 	return settled, nil

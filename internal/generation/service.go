@@ -291,6 +291,26 @@ func (s *Service) ClaimItems(ctx context.Context, req ClaimRequest, nowMicro int
 	resp.Items = make([]ClaimedItem, 0)
 
 	err := core.RunInTx(ctx, s.db, func(tc *core.TxnContext) error {
+		// Enforce in-flight concurrency cap: count active unexpired leases
+		var inFlightCount int
+		err := tc.QueryRow(`
+			SELECT COUNT(*)
+			FROM generation_item
+			WHERE status = 'claimed' AND lease_until >= ?
+		`, nowMicro).Scan(&inFlightCount)
+		if err != nil {
+			return fmt.Errorf("count in-flight items: %w", err)
+		}
+
+		availableSlots := s.policy.MaxConcurrentItems - inFlightCount
+		if availableSlots <= 0 {
+			return nil
+		}
+		claimLimit := limit
+		if claimLimit > availableSlots {
+			claimLimit = availableSlots
+		}
+
 		// Find items that are pending or expired claimed items
 		query := `
 			SELECT id, job_id, fixed_input_json, input_digest, status, fencing_token, attempt_number, lease_until
@@ -299,7 +319,7 @@ func (s *Service) ClaimItems(ctx context.Context, req ClaimRequest, nowMicro int
 			ORDER BY created_at ASC
 			LIMIT ?
 		`
-		rows, err := tc.Query(query, nowMicro, limit)
+		rows, err := tc.Query(query, nowMicro, claimLimit)
 		if err != nil {
 			return fmt.Errorf("query claimable items: %w", err)
 		}

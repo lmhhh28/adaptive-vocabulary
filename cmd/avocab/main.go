@@ -10,6 +10,7 @@ import (
 
 	"adaptive-vocabulary/internal/backup"
 	"adaptive-vocabulary/internal/core"
+	"adaptive-vocabulary/internal/learning"
 	"adaptive-vocabulary/internal/maintenance"
 	"adaptive-vocabulary/internal/platform"
 )
@@ -190,7 +191,11 @@ func runLearningRebuild(args []string) {
 	}
 	defer func() { _ = db.Close() }()
 
-	maintSvc := maintenance.NewService(db.DB)
+	var fsrsPolicy learning.FSRSPolicyConfig
+	if p, err := learning.LoadFSRSPolicyFromPath(cfg.PolicyPath); err == nil && p != nil {
+		fsrsPolicy = *p
+	}
+	maintSvc := maintenance.NewServiceWithPolicy(db.DB, fsrsPolicy)
 
 	var res *maintenance.RebuildResult
 	switch action {

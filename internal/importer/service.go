@@ -27,6 +27,7 @@ var (
 	ErrMaintenance         = errors.New("system under maintenance")
 	ErrIdempotencyConflict = core.ErrIdempotencyConflict
 	ErrInvalidItemStatus   = errors.New("import item cannot be resolved in its current status")
+	ErrSessionActive       = errors.New("cannot modify bank while a practice or exam session is active")
 )
 
 type Service struct {
@@ -214,7 +215,7 @@ func (s *Service) ImportSourceEntries(
 
 		if idempotencyKey != "" {
 			respJSON, _ := json.Marshal(job)
-			_ = core.SaveIdempotencyRecord(tc, &core.IdempotencyRecord{
+			if err := core.SaveIdempotencyRecord(tc, &core.IdempotencyRecord{
 				Operation:     "POST",
 				ResourceScope: "/api/v1/sources/" + sourceID + "/imports",
 				Key:           idempotencyKey,
@@ -223,7 +224,9 @@ func (s *Service) ImportSourceEntries(
 				ResponseCode:  200,
 				ResponseBody:  string(respJSON),
 				CreatedAt:     now,
-			})
+			}); err != nil {
+				return fmt.Errorf("save idempotency record: %w", err)
+			}
 		}
 
 		return nil
@@ -270,12 +273,21 @@ func (s *Service) ImportBankVocabulary(
 			}
 		}
 
+		// Check active session
+		active, err := core.GetActiveSession(tc)
+		if err != nil {
+			return fmt.Errorf("check active session: %w", err)
+		}
+		if active != nil {
+			return ErrSessionActive
+		}
+
 		// Verify bank exists and is not archived
 		var (
 			currentRev int64
 			archived   int
 		)
-		err := tc.QueryRow(`SELECT revision, archived FROM bank WHERE id = ?`, bankID).Scan(&currentRev, &archived)
+		err = tc.QueryRow(`SELECT revision, archived FROM bank WHERE id = ?`, bankID).Scan(&currentRev, &archived)
 		if errors.Is(err, sql.ErrNoRows) {
 			return ErrBankNotFound
 		}
@@ -491,7 +503,7 @@ func (s *Service) ImportBankVocabulary(
 
 		if idempotencyKey != "" {
 			respJSON, _ := json.Marshal(job)
-			_ = core.SaveIdempotencyRecord(tc, &core.IdempotencyRecord{
+			if err := core.SaveIdempotencyRecord(tc, &core.IdempotencyRecord{
 				Operation:     "POST",
 				ResourceScope: "/api/v1/banks/" + bankID + "/imports",
 				Key:           idempotencyKey,
@@ -500,7 +512,9 @@ func (s *Service) ImportBankVocabulary(
 				ResponseCode:  200,
 				ResponseBody:  string(respJSON),
 				CreatedAt:     now,
-			})
+			}); err != nil {
+				return fmt.Errorf("save idempotency record: %w", err)
+			}
 		}
 
 		return nil
@@ -743,6 +757,28 @@ func (s *Service) ResolveImportItem(
 
 			// Add to bank_sense
 			if bankID.Valid && bankID.String != "" {
+				// Check active session
+				active, err := core.GetActiveSession(tc)
+				if err != nil {
+					return fmt.Errorf("check active session: %w", err)
+				}
+				if active != nil {
+					return ErrSessionActive
+				}
+
+				// Check bank exists and is not archived
+				var bankArchived int
+				err = tc.QueryRow(`SELECT archived FROM bank WHERE id = ?`, bankID.String).Scan(&bankArchived)
+				if errors.Is(err, sql.ErrNoRows) {
+					return ErrBankNotFound
+				}
+				if err != nil {
+					return fmt.Errorf("query bank archived: %w", err)
+				}
+				if bankArchived == 1 {
+					return ErrBankArchived
+				}
+
 				membersAdded := 0
 				for _, sID := range req.SenseRefs {
 					res, err := tc.Exec(`
@@ -823,7 +859,7 @@ func (s *Service) ResolveImportItem(
 
 		if idempotencyKey != "" {
 			respJSON, _ := json.Marshal(updatedItem)
-			_ = core.SaveIdempotencyRecord(tc, &core.IdempotencyRecord{
+			if err := core.SaveIdempotencyRecord(tc, &core.IdempotencyRecord{
 				Operation:     "POST",
 				ResourceScope: "/api/v1/import-items/" + itemID + "/resolve",
 				Key:           idempotencyKey,
@@ -832,7 +868,9 @@ func (s *Service) ResolveImportItem(
 				ResponseCode:  200,
 				ResponseBody:  string(respJSON),
 				CreatedAt:     now,
-			})
+			}); err != nil {
+				return fmt.Errorf("save idempotency record: %w", err)
+			}
 		}
 
 		return nil

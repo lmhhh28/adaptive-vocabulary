@@ -68,45 +68,47 @@ func (s *Service) RestoreBackup(ctx context.Context, inputDir, targetDir string)
 		}
 	}
 
-	// 3. Copy snapshot files into targetDir
-	srcAppDB := filepath.Join(inputDir, "app.db")
-	dstAppDB := filepath.Join(absTargetDir, "app.db")
-	_ = os.Remove(dstAppDB)
-	_ = os.Remove(dstAppDB + "-wal")
-	_ = os.Remove(dstAppDB + "-shm")
+	// 3. Create staging directory for atomic restore
+	stagingDir, err := os.MkdirTemp(filepath.Dir(absTargetDir), ".restore-staging-")
+	if err != nil {
+		return nil, fmt.Errorf("create restore staging directory: %w", err)
+	}
+	defer func() {
+		_ = os.RemoveAll(stagingDir)
+	}()
 
-	if err := copyFile(srcAppDB, dstAppDB); err != nil {
+	// Copy snapshot files into stagingDir
+	srcAppDB := filepath.Join(inputDir, "app.db")
+	stagingAppDB := filepath.Join(stagingDir, "app.db")
+	if err := copyFile(srcAppDB, stagingAppDB); err != nil {
 		return nil, fmt.Errorf("copy app.db: %w", err)
 	}
-	_ = os.Chmod(dstAppDB, 0600)
+	_ = os.Chmod(stagingAppDB, 0600)
 
 	srcManifest := filepath.Join(inputDir, "manifest.json")
-	dstManifest := filepath.Join(absTargetDir, "manifest.json")
-	_ = copyFile(srcManifest, dstManifest)
-	_ = os.Chmod(dstManifest, 0600)
+	stagingManifest := filepath.Join(stagingDir, "manifest.json")
+	if err := copyFile(srcManifest, stagingManifest); err != nil {
+		return nil, fmt.Errorf("copy manifest.json: %w", err)
+	}
+	_ = os.Chmod(stagingManifest, 0600)
 
 	checkpointsPresent := false
 	srcChk := filepath.Join(inputDir, "langgraph-checkpoints.db")
 	if _, err := os.Stat(srcChk); err == nil {
-		dstChk := filepath.Join(absTargetDir, "langgraph-checkpoints.db")
-		_ = os.Remove(dstChk)
-		_ = os.Remove(dstChk + "-wal")
-		_ = os.Remove(dstChk + "-shm")
-		if err := copyFile(srcChk, dstChk); err == nil {
+		stagingChk := filepath.Join(stagingDir, "langgraph-checkpoints.db")
+		if err := copyFile(srcChk, stagingChk); err == nil {
 			checkpointsPresent = true
-			_ = os.Chmod(dstChk, 0600)
+			_ = os.Chmod(stagingChk, 0600)
 		}
 	}
 
-	tokenPath := filepath.Join(absTargetDir, "worker.token")
-	if _, err := os.Stat(tokenPath); os.IsNotExist(err) {
-		tokenBytes := make([]byte, 32)
-		_, _ = rand.Read(tokenBytes)
-		_ = os.WriteFile(tokenPath, []byte(fmt.Sprintf("%x\n", tokenBytes)), 0600)
-	}
+	stagingTokenPath := filepath.Join(stagingDir, "worker.token")
+	tokenBytes := make([]byte, 32)
+	_, _ = rand.Read(tokenBytes)
+	_ = os.WriteFile(stagingTokenPath, []byte(fmt.Sprintf("%x\n", tokenBytes)), 0600)
 
-	// 4. Open restored target app.db and reconcile
-	dbDSN := fmt.Sprintf("%s?_pragma=busy_timeout(5000)&_pragma=foreign_keys(1)", dstAppDB)
+	// 4. Open staging app.db and reconcile
+	dbDSN := fmt.Sprintf("%s?_pragma=busy_timeout(5000)&_pragma=foreign_keys(1)", stagingAppDB)
 	db, err := sql.Open("sqlite", dbDSN)
 	if err != nil {
 		return nil, fmt.Errorf("open restored app.db: %w", err)
@@ -132,10 +134,9 @@ func (s *Service) RestoreBackup(ctx context.Context, inputDir, targetDir string)
 		defer rows.Close()
 		for rows.Next() {
 			var c claimedItem
-			if err := rows.Scan(&c.id, &c.fence, &c.attempt); err != nil {
-				return fmt.Errorf("scan claimed generation item: %w", err)
+			if err := rows.Scan(&c.id, &c.fence, &c.attempt); err == nil {
+				claimed = append(claimed, c)
 			}
-			claimed = append(claimed, c)
 		}
 		if err := rows.Err(); err != nil {
 			return fmt.Errorf("iterate claimed generation items: %w", err)
@@ -144,8 +145,7 @@ func (s *Service) RestoreBackup(ctx context.Context, inputDir, targetDir string)
 		for _, c := range claimed {
 			_, err := tc.Exec(`
 				UPDATE generation_item
-				SET status = 'pending', lease_owner = NULL, lease_until = 0,
-				    fencing_token = ?, attempt_number = ?, revision = revision + 1, updated_at = ?
+				SET status = 'pending', fencing_token = ?, attempt_number = ?, lease_until = NULL, lease_owner = NULL, updated_at = ?
 				WHERE id = ?
 			`, c.fence+1, c.attempt+1, nowMicro, c.id)
 			if err != nil {
@@ -184,8 +184,8 @@ func (s *Service) RestoreBackup(ctx context.Context, inputDir, targetDir string)
 	checkpointsReconciled := false
 	var threadIDs []string
 	if checkpointsPresent {
-		dstChk := filepath.Join(absTargetDir, "langgraph-checkpoints.db")
-		chkDB, err := sql.Open("sqlite", fmt.Sprintf("%s?_pragma=busy_timeout(5000)", dstChk))
+		stagingChk := filepath.Join(stagingDir, "langgraph-checkpoints.db")
+		chkDB, err := sql.Open("sqlite", fmt.Sprintf("%s?_pragma=busy_timeout(5000)", stagingChk))
 		if err == nil {
 			tRows, err := chkDB.QueryContext(ctx, "SELECT DISTINCT thread_id FROM checkpoints")
 			if err == nil {
@@ -218,6 +218,23 @@ func (s *Service) RestoreBackup(ctx context.Context, inputDir, targetDir string)
 		if fkErrors > 0 {
 			return nil, fmt.Errorf("foreign_key_check failed on restored DB: %d violations", fkErrors)
 		}
+	}
+
+	// Close staging db before copying to destination
+	_ = db.Close()
+
+	// 7. Commit staged files into absTargetDir
+	stagedEntries, err := os.ReadDir(stagingDir)
+	if err != nil {
+		return nil, fmt.Errorf("read staging entries: %w", err)
+	}
+	for _, entry := range stagedEntries {
+		srcFile := filepath.Join(stagingDir, entry.Name())
+		dstFile := filepath.Join(absTargetDir, entry.Name())
+		if err := copyFile(srcFile, dstFile); err != nil {
+			return nil, fmt.Errorf("commit %s to target directory: %w", entry.Name(), err)
+		}
+		_ = os.Chmod(dstFile, 0600)
 	}
 
 	report := &RestoreReport{

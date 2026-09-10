@@ -450,6 +450,8 @@ func (h *Handler) writeError(w http.ResponseWriter, r *http.Request, err error) 
 		core.WriteJSONError(w, r, http.StatusConflict, "SOURCE_CONFLICT", err.Error(), nil)
 	case errors.Is(err, ErrMaintenance):
 		core.WriteJSONError(w, r, http.StatusServiceUnavailable, "MAINTENANCE", err.Error(), nil)
+	case errors.Is(err, ErrSessionActive):
+		core.WriteJSONError(w, r, http.StatusConflict, "SESSION_ACTIVE", err.Error(), nil)
 	case errors.Is(err, ErrBankArchived):
 		core.WriteJSONError(w, r, http.StatusBadRequest, "BANK_ARCHIVED", err.Error(), nil)
 	case errors.Is(err, ErrInvalidAction) || errors.Is(err, ErrMissingSenseRefs) ||

@@ -1,0 +1,27 @@
+package backup_test
+
+import (
+ "context"
+ "database/sql"
+ "os"
+ "path/filepath"
+ "strings"
+ "testing"
+ "adaptive-vocabulary/internal/backup"
+)
+
+func TestReviewFailedRestoreLeavesUnretryableTarget(t *testing.T){
+ ctx:=context.Background();src:=setupTestDB(t)
+ db,err:=sql.Open("sqlite",filepath.Join(src,"app.db"));if err!=nil{t.Fatal(err)}
+ _,err=db.Exec("CREATE TRIGGER review_reconcile_fault BEFORE UPDATE ON generation_item BEGIN SELECT RAISE(ABORT,'review injected reconciliation failure'); END")
+ db.Close();if err!=nil{t.Fatal(err)}
+ svc:=backup.NewService();snapshot:=filepath.Join(t.TempDir(),"snapshot")
+ if _,err:=svc.CreateBackup(ctx,src,snapshot,false);err!=nil{t.Fatal(err)}
+ target:=filepath.Join(t.TempDir(),"target")
+ _,firstErr:=svc.RestoreBackup(ctx,snapshot,target)
+ if firstErr==nil{t.Fatal("expected injected reconciliation failure")}
+ if _,err:=os.Stat(filepath.Join(target,"app.db"));err!=nil{t.Fatal("expected partial destination",err)}
+ _,secondErr:=svc.RestoreBackup(ctx,snapshot,target)
+ if secondErr==nil||!strings.Contains(secondErr.Error(),"empty new directory"){t.Fatal("unexpected retry",secondErr)}
+ t.Logf("first restore: %v; retry: %v",firstErr,secondErr)
+}

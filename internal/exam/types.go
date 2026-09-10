@@ -1,8 +1,53 @@
 package exam
 
 import (
+	"encoding/json"
+	"fmt"
+	"os"
+
 	"adaptive-vocabulary/internal/content"
 )
+
+// ExamPolicyConfig holds exam settings loaded from policy.
+type ExamPolicyConfig struct {
+	MaxQuestions        int    `json:"max_questions"`
+	MaxSearchStates     int    `json:"max_search_states"`
+	RandomAlgorithm     string `json:"random_algorithm"`
+	MaxAutomaticRebases int    `json:"max_automatic_rebases"`
+}
+
+func DefaultExamPolicyConfig() ExamPolicyConfig {
+	return ExamPolicyConfig{
+		MaxQuestions:        200,
+		MaxSearchStates:     10000,
+		RandomAlgorithm:     "math/rand/v2.PCG",
+		MaxAutomaticRebases: 3,
+	}
+}
+
+func LoadExamPolicyFromPath(path string) (*ExamPolicyConfig, error) {
+	bytes, err := os.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("read policy file %q: %w", path, err)
+	}
+
+	var root struct {
+		Exam ExamPolicyConfig `json:"exam"`
+	}
+	if err := json.Unmarshal(bytes, &root); err != nil {
+		return nil, fmt.Errorf("unmarshal exam policy JSON: %w", err)
+	}
+
+	cfg := root.Exam
+	if cfg.MaxQuestions <= 0 {
+		cfg.MaxQuestions = 200
+	}
+	if cfg.MaxSearchStates <= 0 {
+		cfg.MaxSearchStates = 10000
+	}
+	return &cfg, nil
+}
+
 
 // PublicOption represents an option presented to the user without answer keys.
 type PublicOption struct {
