@@ -32,6 +32,18 @@
 | [可启动模块与端到端任务](docs/09-implementation-plan.md) | 12张任务卡、依赖图、文件责任、启动命令与真实E2E门槛 |
 | [独立审查修订](docs/10-review-resolutions.md) | 六项修订的状态转换、资格矩阵、时间边界及验收ID |
 
+## 跨平台前端开发
+
+适配 iOS、Android、Flutter、React Native、桌面等不同前端平台时，请从以下文档开始：
+
+| 文档 | 内容 |
+| --- | --- |
+| [后端接口完整参考](docs/backend-api-reference.md) | 全部接口定义、数据类型、安全认证、错误码及跨平台实现指南 |
+| [跨平台客户端实现指南](docs/cross-platform-client-guide.md) | 客户端架构设计、认证流程、考试事件队列、各平台代码示例 |
+| [数据库 Schema 参考](docs/database-schema-reference.md) | 完整数据库表结构、约束、索引及实体关系图 |
+| [前端接口联调指南](docs/frontend-api.md) | 浏览器联调、CSRF、错误处理、并发重试及已知差异 |
+| [前端接口字段参考](docs/frontend-api-reference.md) | 39 个业务端点的请求响应字段详情 |
+
 ## 设计原则
 
 ```text

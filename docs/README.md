@@ -1,5 +1,13 @@
 # 文档索引
 
+## 跨平台前端开发
+
+| 文档 | 用途 |
+| --- | --- |
+| [后端接口完整参考（跨平台适配）](backend-api-reference.md) | 全部接口的完整定义、数据类型、安全认证、错误码、幂等性及跨平台实现指南 |
+| [跨平台客户端实现指南](cross-platform-client-guide.md) | iOS/Android/Flutter/React Native/Desktop 客户端架构、认证、事件队列及平台示例代码 |
+| [数据库 Schema 完整参考](database-schema-reference.md) | 全部数据库表结构、字段约束、索引、实体关系图及不变量 |
+
 ## 当前实现与联调
 
 | 文档 | 用途 |
