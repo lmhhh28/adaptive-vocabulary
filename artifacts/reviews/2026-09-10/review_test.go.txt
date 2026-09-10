@@ -1,0 +1,149 @@
+// Temporary audit probes. Copy as internal/reviewcheck/review_test.go to run; PASS confirms the observed defect.
+package reviewcheck
+
+import (
+ "context"
+ "database/sql"
+ "encoding/json"
+ "fmt"
+ "net/http"
+ "net/http/httptest"
+ "os"
+ "path/filepath"
+ "strings"
+ "testing"
+ "time"
+
+ "adaptive-vocabulary/internal/bank"
+ "adaptive-vocabulary/internal/backup"
+ "adaptive-vocabulary/internal/content"
+ "adaptive-vocabulary/internal/core"
+ "adaptive-vocabulary/internal/exam"
+ "adaptive-vocabulary/internal/generation"
+ "adaptive-vocabulary/internal/importer"
+ "adaptive-vocabulary/internal/learning"
+ "adaptive-vocabulary/internal/maintenance"
+ "adaptive-vocabulary/internal/platform"
+ "adaptive-vocabulary/internal/practice"
+ "adaptive-vocabulary/internal/revision"
+ "adaptive-vocabulary/internal/selection"
+)
+
+const bankID = "00000000-0000-4000-8000-000000000801"
+const policyPath = "../../config/policy-v2.json"
+var ctx = context.Background()
+func must(t *testing.T, e error) { t.Helper(); if e != nil { t.Fatal(e) } }
+func dbFor(t *testing.T) (*sql.DB,string) {
+ t.Helper(); dir:=t.TempDir(); d,e:=platform.OpenDB(dir);must(t,e);t.Cleanup(func(){d.Close()})
+ _,e=core.RunMigrations(d.DB);must(t,e);must(t,content.ApplySeed(ctx,d.DB,"core")); return d.DB,dir
+}
+func execSQL(t *testing.T, db *sql.DB, q string,args ...any) {t.Helper();_,e:=db.Exec(q,args...);must(t,e)}
+func practiceSvc(t *testing.T,db *sql.DB) *practice.Service {
+ p,e:=learning.LoadFSRSPolicyFromPath(policyPath);must(t,e)
+ return practice.NewService(db,learning.NewLearningService(db,*p,"observation-v2","v1"),selection.NewSelector(db,selection.DefaultSelectionConfig()))
+}
+func answer(t *testing.T,db *sql.DB,svc *practice.Service) (string,string) {
+ t.Helper();sess,_,e:=svc.CreateOrResumeSession(ctx,bankID,"","");must(t,e)
+ next,e:=svc.NextQuestion(ctx,sess.ID,0);must(t,e);if next.Question==nil{t.Fatalf("no question: %+v",next)}
+ var snap practice.InstanceSnapshot;var raw,qv string
+ must(t,db.QueryRow("SELECT snapshot_json,question_version_id FROM question_instance WHERE id=?",next.Question.InstanceID).Scan(&raw,&qv));must(t,json.Unmarshal([]byte(raw),&snap))
+ fb,_,e:=svc.SubmitAttempt(ctx,sess.ID,practice.SubmitAttemptRequest{InstanceID:next.Question.InstanceID,OptionID:snap.CorrectOptionID},"","","");must(t,e)
+ _,e=svc.EndSession(ctx,sess.ID,&fb.SessionRevision,"ended");must(t,e);return fb.AttemptID,qv
+}
+func TestReviewProjectionSwitchAndInvalidation(t *testing.T){
+ db,_:=dbFor(t); svc:=practiceSvc(t,db);_,qv:=answer(t,db,svc)
+ r,e:=revision.NewService(db,maintenance.NewService(db)).ApplyEvidenceDisposition(ctx,qv,"invalidate","review probe",nil);must(t,e)
+ if r.Status!="succeeded"{t.Fatalf("rebuild: %+v",r)}
+ var active string;must(t,db.QueryRow("SELECT active_version FROM projection_control").Scan(&active))
+ var ord,norm,conf int
+ must(t,db.QueryRow("SELECT coalesce(sum(ordinary_samples),0),coalesce(sum(normal_samples),0) FROM evidence_projection WHERE projection_version=?",active).Scan(&ord,&norm))
+ must(t,db.QueryRow("SELECT count(*) FROM confusion_projection WHERE projection_version=?",active).Scan(&conf))
+ t.Logf("after invalidation active=%s ordinary=%d normal=%d confusion_rows=%d",active,ord,norm,conf)
+ answer(t,db,svc)
+ var oldN,newN int
+ must(t,db.QueryRow("SELECT coalesce(sum(ordinary_samples),0) FROM evidence_projection WHERE projection_version='v1'").Scan(&oldN))
+ must(t,db.QueryRow("SELECT coalesce(sum(ordinary_samples),0) FROM evidence_projection WHERE projection_version=?",active).Scan(&newN))
+ t.Logf("after new successful answer: v1 ordinary=%d active ordinary=%d",oldN,newN)
+ if oldN!=2 || newN!=0 || norm!=1 || conf==0{t.Fatal("expected defects did not reproduce")}
+}
+func TestReviewExamInputsAndReplay(t *testing.T){
+ for _,body:=range []string{"", "{", "{}"}{t.Run(fmt.Sprintf("body_%q",body),func(t *testing.T){
+  db,_:=dbFor(t);h,e:=exam.NewHandler(db,policyPath);must(t,e);ex,_,e:=h.Service().CreateExam(ctx,exam.CreateExamRequest{BankID:bankID,QuestionCount:3},"","");must(t,e)
+  mux:=http.NewServeMux();h.RegisterRoutes(mux);w:=httptest.NewRecorder();mux.ServeHTTP(w,httptest.NewRequest("POST","/api/v1/exams/"+ex.ExamID+"/abandon",strings.NewReader(body)))
+  var status string;must(t,db.QueryRow("SELECT status FROM session WHERE id=?",ex.ExamID).Scan(&status));t.Logf("body=%q HTTP=%d session=%s",body,w.Code,status)
+  if w.Code!=200||status!="abandoned"{t.Fatal("expected defect did not reproduce")}
+ })}
+ t.Run("gap_replay",func(t *testing.T){
+  db,_:=dbFor(t);h,e:=exam.NewHandler(db,policyPath);must(t,e);s:=h.Service();ex,_,e:=s.CreateExam(ctx,exam.CreateExamRequest{BankID:bankID,QuestionCount:3},"","");must(t,e)
+  req:=exam.TelemetryGapsRequest{ExpectedRevision:0,Reason:"lost_queue"};gap,e:=s.RecordTelemetryGap(ctx,ex.ExamID,req,"gap","digest");must(t,e)
+  _,e=s.AbandonExam(ctx,ex.ExamID,exam.AbandonExamRequest{ExpectedRevision:gap.CurrentRevision});must(t,e)
+  _,e=s.RecordTelemetryGap(ctx,ex.ExamID,req,"gap","digest");t.Logf("committed gap retry after closure=%v",e);if e==nil{t.Fatal("expected defect did not reproduce")}
+ })
+}
+func TestReviewImportAndBank(t *testing.T){
+ db,_:=dbFor(t);bsvc:=bank.NewService(db);b,e:=bsvc.CreateBank(ctx,"review-bank","");must(t,e);isvc:=importer.NewService(db)
+ parsed,e:=importer.ParseWordSlice([]string{"river"});must(t,e);job,e:=isvc.ImportBankVocabulary(ctx,b.ID,parsed,"v1",0,"","");must(t,e)
+ items,e:=isvc.GetImportItems(ctx,job.ID,"",50,0);must(t,e);item:=items.Items[0]
+ out,e:=isvc.ResolveImportItem(ctx,item.ID,importer.ResolveItemRequest{Action:"exclude",ExpectedRevision:item.Revision},"","");must(t,e)
+ detail,e:=bsvc.GetBank(ctx,b.ID);must(t,e);t.Logf("resolved->exclude: item=%s members=%d",out.Status,detail.MemberCount)
+ if detail.MemberCount!=1||out.Status!="excluded"{t.Fatal("not reproduced")}
+ execSQL(t,db,"INSERT INTO sense_version(id,sense_id,meaning,version_number,created_at) SELECT 'review-sv2',sense_id,'updated meaning',2,created_at+1 FROM sense_version WHERE sense_id=? LIMIT 1",detail.Members[0].SenseID)
+ detail,e=bsvc.GetBank(ctx,b.ID);must(t,e);t.Logf("two sense versions: member_count=%d len(members)=%d",detail.MemberCount,len(detail.Members))
+ if len(detail.Members)!=2{t.Fatal("not reproduced")}
+ b2,e:=bsvc.CreateBank(ctx,"review-fault","");must(t,e)
+ execSQL(t,db,"CREATE TRIGGER review_bank_insert BEFORE INSERT ON bank_sense WHEN NEW.bank_id='"+b2.ID+"' BEGIN SELECT RAISE(ABORT, 'review simulated write failure'); END")
+ parsed,e=importer.ParseRawInput([]byte("word,sense_id\nriver,"+detail.Members[0].SenseID+"\n"),"review.csv");must(t,e)
+ job,e=isvc.ImportBankVocabulary(ctx,b2.ID,parsed,"v1",0,"","");must(t,e);detail,e=bsvc.GetBank(ctx,b2.ID);must(t,e)
+ t.Logf("failed bank insert: job=%s resolved=%d actual_members=%d",job.Status,job.ResolvedCount,detail.MemberCount)
+ if job.ResolvedCount!=1||detail.MemberCount!=0{t.Fatal("not reproduced")}
+}
+func genSetup(t *testing.T,db *sql.DB)(*generation.Service,generation.ClaimedItem,int64){
+ t.Helper();s:=generation.NewService(db,generation.DefaultGenerationConfig());now:=time.Now().UnixMicro()
+ var ref generation.SenseRef;must(t,db.QueryRow("SELECT s.id,sv.id FROM sense s JOIN sense_version sv ON sv.sense_id=s.id JOIN bank_sense bs ON bs.sense_id=s.id WHERE bs.bank_id=? LIMIT 1",bankID).Scan(&ref.SenseID,&ref.SenseVersionID))
+ var bankRev int;must(t,db.QueryRow("SELECT revision FROM bank WHERE id=?",bankID).Scan(&bankRev))
+ _,_,e:=s.CreateJob(ctx,bankID,generation.CreateJobRequest{SenseRefs:[]generation.SenseRef{ref},GenerationConfigVersion:"v1",QualityPolicyVersion:"v1",ExpectedRevision:bankRev},"","",now);must(t,e)
+ c,e:=s.ClaimItems(ctx,generation.ClaimRequest{WorkerID:"review-worker",Limit:1},now);must(t,e);return s,c.Items[0],now
+}
+func reserve(t *testing.T,s *generation.Service,c generation.ClaimedItem,now int64,stage string,idx int)string{
+ t.Helper();r,_,e:=s.ReserveCall(ctx,generation.ReserveRequest{WorkerID:"review-worker",ItemID:c.ItemID,FencingToken:c.FencingToken,InputDigest:c.InputDigest,LogicalCallKey:generation.LogicalCallKey{AttemptNumber:c.AttemptNumber,Stage:stage,EvaluationIndex:idx},NetworkAttemptID:core.NewUUID(),ProfileVersion:"v1",InputSHA256:"test-hash",InputTokenEstimate:100,MaxOutputTokens:100},"","",now);must(t,e);return r.ReservationID
+}
+func settlement(c generation.ClaimedItem,outcome string)generation.SettleRequest{return generation.SettleRequest{WorkerID:"review-worker",ItemID:c.ItemID,FencingToken:c.FencingToken,InputDigest:c.InputDigest,Outcome:outcome}}
+func TestReviewGenerationValidation(t *testing.T){
+ t.Run("unknown_cannot_finalize",func(t *testing.T){db,_:=dbFor(t);s,c,now:=genSetup(t,db);id:=reserve(t,s,c,now,"generator",0);_,e:=s.SettleCall(ctx,id,settlement(c,"unknown"),now);must(t,e);r:=settlement(c,"response");r.Usage=&generation.TokenUsage{InputTokens:10,OutputTokens:20};_,e=s.SettleCall(ctx,id,r,now);t.Logf("unknown->response error=%v",e);if e==nil{t.Fatal("not reproduced")}})
+ t.Run("multiple_answers_and_identity",func(t *testing.T){
+  db,_:=dbFor(t);s,c,now:=genSetup(t,db);ids:=[]string{reserve(t,s,c,now,"generator",0),reserve(t,s,c,now,"evaluator",0),reserve(t,s,c,now,"evaluator",1)}
+  for _,id:=range ids{_,e:=s.SettleCall(ctx,id,settlement(c,"response"),now);must(t,e)}
+  ratings:=map[string]string{};for _,k:=range []string{"target_meaning","unique_answer","grammar","naturalness","explanation_consistency","distractor_validity"}{ratings[k]="pass"}
+  ev:=generation.SemanticEvaluation{ProfileVersion:"v1",Ratings:ratings};opts:=[]generation.CandidateOption{}
+  for i:=0;i<4;i++{opts=append(opts,generation.CandidateOption{ID:fmt.Sprint("o",i),Text:fmt.Sprint("review-option-",i),Language:"zh",IsCorrect:i<2})}
+  req:=generation.SubmitCandidateRequest{WorkerID:"review-worker",ItemID:c.ItemID,FencingToken:c.FencingToken,InputDigest:c.InputDigest,AttemptNumber:c.AttemptNumber,Content:generation.CandidateContent{TaskFamily:"meaning_recognition",Stem:"review first stem",Options:opts},GenerationMetadata:generation.GenerationMetadata{GeneratorReservationID:ids[0],EvaluatorReservationIDs:ids[1:]},Checks:generation.CandidateChecks{Result:"pass",RuleChecks:map[string]any{"single_correct":false},SemanticEvaluations:[]generation.SemanticEvaluation{ev,ev}}}
+  one,_,e:=s.SubmitCandidate(ctx,req,"","",now);must(t,e);t.Logf("two correct options + single_correct=false disposition=%s",one.Disposition)
+  s,c,now=genSetup(t,db);ids=[]string{reserve(t,s,c,now,"generator",0),reserve(t,s,c,now,"evaluator",0),reserve(t,s,c,now,"evaluator",1)}
+  for _,id:=range ids{_,e:=s.SettleCall(ctx,id,settlement(c,"response"),now);must(t,e)}
+  req.ItemID=c.ItemID;req.FencingToken=c.FencingToken;req.InputDigest=c.InputDigest;req.AttemptNumber=c.AttemptNumber;req.GenerationMetadata=generation.GenerationMetadata{GeneratorReservationID:ids[0],EvaluatorReservationIDs:ids[1:]}
+  req.Content.Stem="review second stem";two,_,e:=s.SubmitCandidate(ctx,req,"","",now+1);must(t,e)
+  var missing int;must(t,db.QueryRow("SELECT count(*) FROM question_version q,json_each(q.options_json) o LEFT JOIN option_identity oi ON oi.id=json_extract(o.value,'$.option_identity_id') WHERE q.id=? AND oi.id IS NULL",*two.PublishedVersionID).Scan(&missing));t.Logf("reused canonical options: unresolved identity references=%d/4",missing)
+  if one.Disposition!="published"||missing!=4{t.Fatal("not reproduced")}
+ })
+}
+func TestReviewCheckpointFailure(t *testing.T){
+ _,dir:=dbFor(t);must(t,os.WriteFile(filepath.Join(dir,"langgraph-checkpoints.db"),[]byte("not a sqlite database"),0600))
+ svc:=backup.NewService();out:=filepath.Join(t.TempDir(),"snapshot");m,e:=svc.CreateBackup(ctx,dir,out,true);must(t,e)
+ t.Logf("backup succeeds with corrupt checkpoint: files=%d",len(m.Files));if len(m.Files)!=2{t.Fatal("not reproduced")}
+}
+func TestReviewSelectionScaling(t *testing.T){
+ for _,n:=range []int{100,1000,5000}{t.Run(fmt.Sprint(n),func(t *testing.T){
+  db,_:=dbFor(t);var src string;must(t,db.QueryRow("SELECT id FROM source LIMIT 1").Scan(&src))
+  tx,e:=db.Begin();must(t,e)
+  for i:=0;i<n;i++{id:=fmt.Sprintf("scale-%05d",i);for _,q:=range []struct{s string;a []any}{
+   {"INSERT INTO lexeme(id,canonical_form,created_at) VALUES(?,?,1)",[]any{id,id}},
+   {"INSERT INTO sense(id,lexeme_id,part_of_speech,source_id,created_at) VALUES(?,?,'n',?,1)",[]any{id,id,src}},
+   {"INSERT INTO sense_version(id,sense_id,meaning,created_at) VALUES(?,?,'meaning',1)",[]any{id,id}},
+   {"INSERT INTO bank_sense(bank_id,sense_id,added_at) VALUES(?,?,1)",[]any{bankID,id}},
+   {"INSERT INTO question_form(id,sense_id,task_family,dedup_hash,normalized_stem,created_at) VALUES(?,?,'meaning_recognition',?,'stem',1)",[]any{id,id,id}},
+   {"INSERT INTO question_version(id,form_id,sense_id,sense_version_id,task_family,stem,options_json,correct_option_id,explanation,status,created_at,updated_at) SELECT ?,?,?,?,'meaning_recognition','stem',options_json,correct_option_id,'exp','published',1,1 FROM question_version LIMIT 1",[]any{id,id,id,id}},
+  }{_,e=tx.Exec(q.s,q.a...);must(t,e)}};must(t,tx.Commit())
+  sel:=selection.NewSelector(db,selection.DefaultSelectionConfig());req:=selection.SelectionRequest{SessionID:"scale-session",BankID:bankID,NowMicro:time.Now().UnixMicro()}
+  times:=[]time.Duration{};for i:=0;i<3;i++{start:=time.Now();r,e:=sel.SelectNextQuestion(ctx,req);must(t,e);if r.Status!="ready"{t.Fatal(r.Status)};times=append(times,time.Since(start))};t.Logf("senses=%d one published task each; next durations=%v",n,times)
+ })}
+}

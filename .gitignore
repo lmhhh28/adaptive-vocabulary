@@ -3,7 +3,10 @@
 .env.*
 !.env.example
 data/
-artifacts/
+/artifacts/*
+!/artifacts/quality-benchmark/
+!/artifacts/reviews/
+worker/artifacts/
 *.db
 *.db-wal
 *.db-shm
