@@ -26,6 +26,7 @@ Adaptive Vocabulary 是一款专为个人设计的本机单体自适应词汇学
 - **操作系统**：macOS (Apple Silicon / Intel) 或 Linux (amd64 / arm64)；
 - **系统工具**：系统已预装 Python 3.9+、pip 与 `make`。
 - **沙盒工具链**：项目采用自包含工具链，运行 `make bootstrap` 后会自动在 `.tools/` 安装隔离的 Go 1.27.1、uv，并在 `.cache/` 维护构建与包缓存，不污染、不替换全局系统环境。
+- **完整安装指南**：如需了解各 Linux 发行版与 macOS 的前置依赖一键安装、国内源配置及常见排错，请参阅 [新机环境搭建与开发依赖完整指南](developer-setup.md)。
 
 ### 2. 引导与构建步骤
 

@@ -14,6 +14,7 @@
 | --- | --- |
 | [前端接口联调指南](frontend-api.md) | 初始化、CSRF、错误、并发重试、页面流程、已知实现差异 |
 | [前端接口与字段参考](frontend-api-reference.md) | 39 个业务 HTTP 方法/路径组合及请求响应字段 |
+| [新机环境搭建与开发依赖完整指南](developer-setup.md) | 新机宿主前置要求、沙盒工具链引导、依赖同步、构建与测试完整流程 |
 | [浏览器请求示例](examples/frontend-client.mjs) | 固定写操作正文与 key、CSRF、统一错误；不自动重试 |
 | [真实进程联调演练](examples/frontend-api-walkthrough.py) | 在临时数据目录验证文档请求，可选 Chromium 验证 JS helper |
 | [运行与个人使用手册](runbook.md) | 启动、日常操作、维护、备份与恢复 |

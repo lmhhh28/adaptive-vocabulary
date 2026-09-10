@@ -60,13 +60,20 @@
 
 ## 开发环境
 
-macOS/Linux arm64/amd64，已有 Python 3.9+ 与 pip、make 即可引导。工具链安装到项目 `.tools/`，缓存位于 `.cache/`，不替换系统 Python 或 Go：
+macOS/Linux arm64/amd64，已有 Python 3.9+ 与 pip、make 即可引导。工具链安装到项目 `.tools/`，缓存位于 `.cache/`，不替换系统 Python 或 Go。完整宿主前置安装、国内代理源配置与排错指南详见 **[新机环境搭建与开发依赖完整指南](docs/developer-setup.md)**。
 
 ```sh
+# 1. 引导工具链并同步锁定依赖
 make bootstrap
 make sync
 make check
+
+# 2. 编译并首次启动（加载基础种子词库）
+make build
+./bin/avocab serve --data-dir data/local --listen 127.0.0.1:8080 --seed core
 ```
+
+浏览器访问 `http://127.0.0.1:8080` 即可开始使用。后续日常运行直接执行 `make run`。
 
 扩充候选词库使用 `make content`：下载并校验固定版本ECDICT原始CSV/许可，本机已完成；快照大文件保存在不入Git的data目录，可按已提交哈希复现。
 
