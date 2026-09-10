@@ -115,6 +115,7 @@ func (s *LearningService) ReplayProjections(ctx context.Context, targetProjectio
 			policy:                   s.policy,
 			observationPolicyVersion: s.observationPolicyVersion,
 			projectionVersion:        targetProjectionVersion,
+			isReplay:                 true,
 		}
 
 		for _, item := range attempts {
@@ -156,16 +157,16 @@ func (s *LearningService) ReplayProjections(ctx context.Context, targetProjectio
 			decision := ClassifyEligibility(&item.attempt, isDisputed)
 
 			if decision.FSRSReview {
-				if _, err := replayService.applyFSRS(tc, &item.attempt); err != nil {
+				if _, err := replayService.applyFSRS(tc, &item.attempt, targetProjectionVersion); err != nil {
 					return fmt.Errorf("replay apply fsrs: %w", err)
 				}
 			}
 
-			if err := replayService.updateEvidence(tc, &item.attempt, decision); err != nil {
+			if err := replayService.updateEvidence(tc, &item.attempt, decision, targetProjectionVersion); err != nil {
 				return fmt.Errorf("replay update evidence: %w", err)
 			}
 
-			if err := replayService.updateConfusion(tc, &item.attempt, options, decision); err != nil {
+			if err := replayService.updateConfusion(tc, &item.attempt, options, decision, targetProjectionVersion); err != nil {
 				return fmt.Errorf("replay update confusion: %w", err)
 			}
 		}

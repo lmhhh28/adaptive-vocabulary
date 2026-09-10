@@ -45,6 +45,7 @@ class WorkerState(TypedDict, total=False):
     published_version_id: Optional[str]
     status: str  # "processing" | "completed" | "needs_attention" | "budget_exhausted" | "failed"
     stop_reason: Optional[str]
+    lease_lost: bool
     crash_after_gen_hook: bool
 
 
@@ -74,22 +75,53 @@ class GenerationWorkflow:
         builder.add_node("complete_item", self._node_complete_item)
 
         builder.add_edge(START, "reserve_generator")
-        builder.add_edge("reserve_generator", "call_generator")
-        builder.add_edge("call_generator", "reserve_evaluators")
-        builder.add_edge("reserve_evaluators", "call_evaluators")
 
-        # Conditional branch after evaluation
+        builder.add_conditional_edges(
+            "reserve_generator",
+            lambda s: "halt" if s.get("lease_lost") else ("complete" if s.get("status") in ("budget_exhausted", "failed") else "continue"),
+            {
+                "continue": "call_generator",
+                "complete": "complete_item",
+                "halt": END,
+            }
+        )
+        builder.add_conditional_edges(
+            "call_generator",
+            lambda s: "halt" if s.get("lease_lost") else ("complete" if s.get("status") in ("budget_exhausted", "failed") else "continue"),
+            {
+                "continue": "reserve_evaluators",
+                "complete": "complete_item",
+                "halt": END,
+            }
+        )
+        builder.add_conditional_edges(
+            "reserve_evaluators",
+            lambda s: "halt" if s.get("lease_lost") else ("complete" if s.get("status") in ("budget_exhausted", "failed") else "continue"),
+            {
+                "continue": "call_evaluators",
+                "complete": "complete_item",
+                "halt": END,
+            }
+        )
         builder.add_conditional_edges(
             "call_evaluators",
             self._route_after_evaluators,
             {
                 "revise": "prepare_revision",
                 "submit": "submit_candidate",
-                "halt": END
+                "complete": "complete_item",
+                "halt": END,
             }
         )
         builder.add_edge("prepare_revision", "reserve_generator")
-        builder.add_edge("submit_candidate", "complete_item")
+        builder.add_conditional_edges(
+            "submit_candidate",
+            lambda s: "halt" if s.get("lease_lost") else "complete",
+            {
+                "complete": "complete_item",
+                "halt": END,
+            }
+        )
         builder.add_edge("complete_item", END)
 
         return builder.compile(checkpointer=self.checkpointer)
@@ -125,9 +157,9 @@ class GenerationWorkflow:
             )
             return {"generator_reservation_id": resp["reservation_id"]}
         except BudgetExhaustedError as exc:
-            return {"status": "budget_exhausted", "stop_reason": str(exc)}
+            return {"status": "budget_exhausted", "lease_lost": False, "stop_reason": str(exc)}
         except LeaseLostError as exc:
-            return {"status": "failed", "stop_reason": str(exc)}
+            return {"status": "failed", "lease_lost": True, "stop_reason": str(exc)}
 
     def _node_call_generator(self, state: WorkerState) -> dict[str, Any]:
         if state.get("status") in ("budget_exhausted", "failed"):
@@ -135,7 +167,7 @@ class GenerationWorkflow:
 
         res_id = state.get("generator_reservation_id")
         if not res_id:
-            return {"status": "failed", "stop_reason": "Missing generator_reservation_id"}
+            return {"status": "failed", "lease_lost": False, "stop_reason": "Missing generator_reservation_id"}
 
         fixed_input = state["fixed_input"]
         task_families = fixed_input.get("required_task_families", ["meaning_recognition"])
@@ -162,7 +194,7 @@ class GenerationWorkflow:
                 )
             except Exception:
                 pass
-            return {"status": "failed", "stop_reason": f"Provider call failed: {exc}"}
+            return {"status": "failed", "lease_lost": False, "stop_reason": f"Provider call failed: {exc}"}
 
         # Settle success with Go
         try:
@@ -177,7 +209,9 @@ class GenerationWorkflow:
                 usage=call_res.usage
             )
         except (BudgetExhaustedError, LeaseLostError) as exc:
-            return {"status": "failed", "stop_reason": str(exc)}
+            lease_lost = isinstance(exc, LeaseLostError)
+            status = "budget_exhausted" if isinstance(exc, BudgetExhaustedError) else "failed"
+            return {"status": status, "lease_lost": lease_lost, "stop_reason": str(exc)}
 
         # Simulated crash hook for WK-02
         if state.get("crash_after_gen_hook"):
@@ -223,9 +257,20 @@ class GenerationWorkflow:
                 )
                 reservation_ids.append(resp["reservation_id"])
             except BudgetExhaustedError as exc:
-                return {"status": "budget_exhausted", "stop_reason": str(exc), "evaluator_reservation_ids": reservation_ids}
+                for rid in reservation_ids:
+                    try:
+                        self.go_client.settle(
+                            reservation_id=rid,
+                            item_id=item_id,
+                            fencing_token=fencing_token,
+                            input_digest=input_digest,
+                            outcome="network_error"
+                        )
+                    except Exception:
+                        pass
+                return {"status": "budget_exhausted", "lease_lost": False, "stop_reason": str(exc), "evaluator_reservation_ids": reservation_ids}
             except LeaseLostError as exc:
-                return {"status": "failed", "stop_reason": str(exc), "evaluator_reservation_ids": reservation_ids}
+                return {"status": "failed", "lease_lost": True, "stop_reason": str(exc), "evaluator_reservation_ids": reservation_ids}
 
         return {"evaluator_reservation_ids": reservation_ids}
 
@@ -235,7 +280,7 @@ class GenerationWorkflow:
 
         res_ids = state.get("evaluator_reservation_ids", [])
         if len(res_ids) < 2:
-            return {"status": "failed", "stop_reason": "Insufficient evaluator reservations"}
+            return {"status": "failed", "lease_lost": False, "stop_reason": "Insufficient evaluator reservations"}
 
         candidate_content = state.get("candidate_content", {})
         fixed_input = state["fixed_input"]
@@ -250,17 +295,18 @@ class GenerationWorkflow:
                     max_tokens=self.config.evaluator_cfg.get("max_output_tokens", 256)
                 )
             except ProviderError as exc:
-                try:
-                    self.go_client.settle(
-                        reservation_id=res_id,
-                        item_id=state["item_id"],
-                        fencing_token=state["fencing_token"],
-                        input_digest=state["input_digest"],
-                        outcome="network_error"
-                    )
-                except Exception:
-                    pass
-                return {"status": "failed", "stop_reason": f"Evaluator call failed: {exc}"}
+                for rid in res_ids[eval_idx:2]:
+                    try:
+                        self.go_client.settle(
+                            reservation_id=rid,
+                            item_id=state["item_id"],
+                            fencing_token=state["fencing_token"],
+                            input_digest=state["input_digest"],
+                            outcome="network_error"
+                        )
+                    except Exception:
+                        pass
+                return {"status": "failed", "lease_lost": False, "stop_reason": f"Evaluator call failed: {exc}"}
 
             try:
                 self.go_client.settle(
@@ -274,7 +320,20 @@ class GenerationWorkflow:
                     usage=call_res.usage
                 )
             except (BudgetExhaustedError, LeaseLostError) as exc:
-                return {"status": "failed", "stop_reason": str(exc)}
+                lease_lost = isinstance(exc, LeaseLostError)
+                status = "budget_exhausted" if isinstance(exc, BudgetExhaustedError) else "failed"
+                for rid in res_ids[eval_idx+1:2]:
+                    try:
+                        self.go_client.settle(
+                            reservation_id=rid,
+                            item_id=state["item_id"],
+                            fencing_token=state["fencing_token"],
+                            input_digest=state["input_digest"],
+                            outcome="network_error"
+                        )
+                    except Exception:
+                        pass
+                return {"status": status, "lease_lost": lease_lost, "stop_reason": str(exc)}
 
             eval_dict = {
                 # Trace the profile that authorized this call; model output cannot choose it.
@@ -335,8 +394,10 @@ class GenerationWorkflow:
         }
 
     def _route_after_evaluators(self, state: WorkerState) -> str:
-        if state.get("status") in ("budget_exhausted", "failed"):
+        if state.get("lease_lost"):
             return "halt"
+        if state.get("status") in ("budget_exhausted", "failed"):
+            return "complete"
 
         verdict = state.get("verdict", "pass")
         rev_count = state.get("revision_count", 0)
@@ -357,6 +418,8 @@ class GenerationWorkflow:
         }
 
     def _node_submit_candidate(self, state: WorkerState) -> dict[str, Any]:
+        if state.get("lease_lost"):
+            return {}
         if state.get("status") in ("budget_exhausted", "failed"):
             return {}
 
@@ -390,17 +453,22 @@ class GenerationWorkflow:
                 "published_version_id": resp.get("published_version_id")
             }
         except (LeaseLostError, BudgetExhaustedError, GoAPIError) as exc:
-            return {"status": "failed", "stop_reason": str(exc)}
+            is_lease_lost = isinstance(exc, LeaseLostError)
+            status = "budget_exhausted" if isinstance(exc, BudgetExhaustedError) else "failed"
+            return {"status": status, "stop_reason": str(exc), "lease_lost": is_lease_lost}
 
     def _node_complete_item(self, state: WorkerState) -> dict[str, Any]:
-        if state.get("status") in ("budget_exhausted", "failed"):
+        if state.get("lease_lost"):
             return {}
 
+        status = state.get("status")
         disposition = state.get("disposition")
-        if disposition in ("published", "auto_passed"):
-            outcome = "completed"
-        elif state.get("status") == "budget_exhausted":
+        if status == "budget_exhausted":
             outcome = "budget_exhausted"
+        elif status == "failed":
+            outcome = "failed"
+        elif disposition in ("published", "auto_passed"):
+            outcome = "completed"
         else:
             outcome = "needs_attention"
 
@@ -417,6 +485,8 @@ class GenerationWorkflow:
                 reason=state.get("stop_reason")
             )
             return {"status": outcome}
+        except LeaseLostError as exc:
+            return {"status": "failed", "stop_reason": str(exc), "lease_lost": True}
         except Exception as exc:
             return {"status": "failed", "stop_reason": str(exc)}
 

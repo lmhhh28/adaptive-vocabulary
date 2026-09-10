@@ -125,3 +125,7 @@ CREATE TABLE IF NOT EXISTS question_instance (
     created_at INTEGER NOT NULL,
     UNIQUE (session_id, ordinal)
 );
+
+CREATE INDEX IF NOT EXISTS idx_question_version_unit_lookup
+ON question_version (sense_id, task_family, status, created_at);
+

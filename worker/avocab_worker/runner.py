@@ -87,6 +87,7 @@ class WorkerRunner:
             "published_version_id": None,
             "status": "processing",
             "stop_reason": None,
+            "lease_lost": False,
             "crash_after_gen_hook": crash_after_gen
         }
 

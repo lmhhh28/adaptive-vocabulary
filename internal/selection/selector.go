@@ -177,16 +177,119 @@ func (s *Selector) SelectNextQuestion(ctx context.Context, req SelectionRequest)
 		lexemeID string
 	}
 	var bankSenses []bankSense
+	senseToLexeme := make(map[string]string)
 	for rowsBank.Next() {
 		var bs bankSense
 		if err := rowsBank.Scan(&bs.senseID, &bs.lexemeID); err != nil {
 			return nil, fmt.Errorf("scan bank sense: %w", err)
 		}
 		bankSenses = append(bankSenses, bs)
+		senseToLexeme[bs.senseID] = bs.lexemeID
 	}
 	if err := rowsBank.Err(); err != nil {
 		return nil, fmt.Errorf("iterate bank senses: %w", err)
 	}
+
+	// 2a. Batch query published question units in this bank
+	queryPublished := `
+		SELECT DISTINCT qv.sense_id, qv.task_family
+		FROM bank_sense bs
+		JOIN question_version qv ON qv.sense_id = bs.sense_id
+		WHERE bs.bank_id = ? AND qv.status = 'published'
+	`
+	rowsPub, err := s.db.QueryContext(ctx, queryPublished, req.BankID)
+	if err != nil {
+		return nil, fmt.Errorf("query published question units: %w", err)
+	}
+	defer rowsPub.Close()
+
+	hasPublished := make(map[string]bool)
+	for rowsPub.Next() {
+		var sID, tf string
+		if err := rowsPub.Scan(&sID, &tf); err != nil {
+			return nil, fmt.Errorf("scan published unit: %w", err)
+		}
+		hasPublished[sID+":"+tf] = true
+	}
+	if err := rowsPub.Err(); err != nil {
+		return nil, fmt.Errorf("iterate published units: %w", err)
+	}
+
+	// 2b. Batch query evidence projections in this bank for the active projection version
+	type evData struct {
+		ordinarySamples            int
+		earliestOrdinaryObservedAt int64
+		needsConsolidation         bool
+	}
+	evMap := make(map[string]evData)
+	lexemeTestedTasks := make(map[string]map[string]bool)
+
+	queryEvBatch := `
+		SELECT ep.sense_id, ep.task_family, ep.ordinary_samples, ep.earliest_ordinary_observed_at, ep.needs_consolidation
+		FROM bank_sense bs
+		JOIN evidence_projection ep ON ep.sense_id = bs.sense_id
+		WHERE bs.bank_id = ? AND ep.projection_version = ?
+	`
+	rowsEv, err := s.db.QueryContext(ctx, queryEvBatch, req.BankID, req.ProjectionVersion)
+	if err != nil {
+		return nil, fmt.Errorf("query evidence projections: %w", err)
+	}
+	defer rowsEv.Close()
+
+	for rowsEv.Next() {
+		var sID, tf string
+		var ordS int
+		var earObs sql.NullInt64
+		var needsC int
+		if err := rowsEv.Scan(&sID, &tf, &ordS, &earObs, &needsC); err != nil {
+			return nil, fmt.Errorf("scan evidence projection: %w", err)
+		}
+		evMap[sID+":"+tf] = evData{
+			ordinarySamples:            ordS,
+			earliestOrdinaryObservedAt: earObs.Int64,
+			needsConsolidation:         needsC == 1,
+		}
+		if ordS > 0 {
+			if lexemeID, ok := senseToLexeme[sID]; ok {
+				if lexemeTestedTasks[lexemeID] == nil {
+					lexemeTestedTasks[lexemeID] = make(map[string]bool)
+				}
+				lexemeTestedTasks[lexemeID][tf] = true
+			}
+		}
+	}
+	if err := rowsEv.Err(); err != nil {
+		return nil, fmt.Errorf("iterate evidence projections: %w", err)
+	}
+
+	// 2c. Batch query memory projections in this bank for the active projection version
+	memMap := make(map[string]int64)
+	queryMemBatch := `
+		SELECT mp.sense_id, mp.task_family, mp.due_at
+		FROM bank_sense bs
+		JOIN memory_projection mp ON mp.sense_id = bs.sense_id
+		WHERE bs.bank_id = ? AND mp.projection_version = ?
+	`
+	rowsMem, err := s.db.QueryContext(ctx, queryMemBatch, req.BankID, req.ProjectionVersion)
+	if err != nil {
+		return nil, fmt.Errorf("query memory projections: %w", err)
+	}
+	defer rowsMem.Close()
+
+	for rowsMem.Next() {
+		var sID, tf string
+		var dueAt int64
+		if err := rowsMem.Scan(&sID, &tf, &dueAt); err != nil {
+			return nil, fmt.Errorf("scan memory projection: %w", err)
+		}
+		memMap[sID+":"+tf] = dueAt
+	}
+	if err := rowsMem.Err(); err != nil {
+		return nil, fmt.Errorf("iterate memory projections: %w", err)
+	}
+
+	// 2d. Cooldown caching per lexeme
+	lexemeCooldown := make(map[string]bool)
 
 	var cooldownCount int
 	var contentMissingCount int
@@ -198,76 +301,42 @@ func (s *Selector) SelectNextQuestion(ctx context.Context, req SelectionRequest)
 
 	for _, bs := range bankSenses {
 		for _, tf := range learning.TaskFamilies {
-			// Check if published question versions exist
-			forms, err := s.getPublishedVersionsForUnit(ctx, bs.senseID, tf)
-			if err != nil {
-				return nil, fmt.Errorf("get published versions: %w", err)
-			}
-			if len(forms) == 0 {
+			key := bs.senseID + ":" + tf
+			if !hasPublished[key] {
 				contentMissingCount++
 				continue
 			}
 
-			// Check normal cooling for lexeme
-			inCooldown, err := CheckNormalCooldown(ctx, s.db, s.cfg, req.SessionID, bs.lexemeID, req.NowMicro)
-			if err != nil {
-				return nil, fmt.Errorf("check normal cooldown: %w", err)
+			// Check normal cooling for lexeme with per-request cache
+			inCooldown, ok := lexemeCooldown[bs.lexemeID]
+			if !ok {
+				var err error
+				inCooldown, err = CheckNormalCooldown(ctx, s.db, s.cfg, req.SessionID, bs.lexemeID, req.NowMicro)
+				if err != nil {
+					return nil, fmt.Errorf("check normal cooldown: %w", err)
+				}
+				lexemeCooldown[bs.lexemeID] = inCooldown
 			}
 			if inCooldown {
 				cooldownCount++
 				continue
 			}
 
-			// Load evidence and memory projections
-			var ordinarySamples int
-			var earliestObservedAt sql.NullInt64
-			var needsConsolidationInt int
-			queryEv := `
-				SELECT ordinary_samples, earliest_ordinary_observed_at, needs_consolidation
-				FROM evidence_projection
-				WHERE projection_version = ? AND sense_id = ? AND task_family = ?
-			`
-			err = s.db.QueryRowContext(ctx, queryEv, req.ProjectionVersion, bs.senseID, tf).Scan(
-				&ordinarySamples,
-				&earliestObservedAt,
-				&needsConsolidationInt,
-			)
-			if err != nil && err != sql.ErrNoRows {
-				return nil, fmt.Errorf("query evidence: %w", err)
-			}
-
-			var dueAt int64
-			queryMem := `
-				SELECT due_at
-				FROM memory_projection
-				WHERE projection_version = ? AND sense_id = ? AND task_family = ?
-			`
-			err = s.db.QueryRowContext(ctx, queryMem, req.ProjectionVersion, bs.senseID, tf).Scan(&dueAt)
-			if err != nil && err != sql.ErrNoRows {
-				return nil, fmt.Errorf("query memory: %w", err)
-			}
+			ev := evMap[key]
+			dueAt := memMap[key]
 
 			cand := candidateUnit{
 				senseID:                    bs.senseID,
 				lexemeID:                   bs.lexemeID,
 				taskFamily:                 tf,
-				ordinarySamples:            ordinarySamples,
+				ordinarySamples:            ev.ordinarySamples,
 				dueAt:                      dueAt,
-				earliestOrdinaryObservedAt: earliestObservedAt.Int64,
-				needsConsolidation:         needsConsolidationInt == 1,
+				earliestOrdinaryObservedAt: ev.earliestOrdinaryObservedAt,
+				needsConsolidation:         ev.needsConsolidation,
 			}
 
-			if ordinarySamples == 0 {
-				// Query count of other tested task families for same lexeme
-				queryTested := `
-					SELECT count(DISTINCT ep.task_family)
-					FROM evidence_projection ep
-					JOIN sense s ON s.id = ep.sense_id
-					WHERE ep.projection_version = ?
-					  AND s.lexeme_id = ?
-					  AND ep.ordinary_samples > 0
-				`
-				_ = s.db.QueryRowContext(ctx, queryTested, req.ProjectionVersion, bs.lexemeID).Scan(&cand.otherTestedTasksCount)
+			if ev.ordinarySamples == 0 {
+				cand.otherTestedTasksCount = len(lexemeTestedTasks[bs.lexemeID])
 				unseenCandidates = append(unseenCandidates, cand)
 			} else if req.NowMicro >= dueAt {
 				dueCandidates = append(dueCandidates, cand)

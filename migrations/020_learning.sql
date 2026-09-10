@@ -64,6 +64,12 @@ WHERE kind IN ('reserved', 'feedback_available');
 CREATE INDEX IF NOT EXISTS idx_exposure_lookup
 ON exposure_event (lexeme_id, form_id, observed_at, event_sequence);
 
+CREATE INDEX IF NOT EXISTS idx_exposure_event_cooldown
+ON exposure_event (lexeme_id, kind, observed_at, event_sequence);
+
+CREATE INDEX IF NOT EXISTS idx_attempt_event_cooldown
+ON attempt_event (source, purpose, observed_at, event_sequence);
+
 CREATE TABLE IF NOT EXISTS review_event (
     id TEXT PRIMARY KEY,
     attempt_id TEXT NOT NULL REFERENCES attempt_event(id),

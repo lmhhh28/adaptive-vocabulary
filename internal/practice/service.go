@@ -381,11 +381,23 @@ func (s *Service) NextQuestion(
 	}
 	nowMicro := time.Now().UTC().UnixNano() / 1000
 
+	pc, err := core.GetProjectionControl(s.db)
+	if err != nil {
+		return nil, fmt.Errorf("get projection control for selection: %w", err)
+	}
+	if pc.Mode == "rebuilding" {
+		return nil, ErrMaintenance
+	}
+	activeVersion := pc.ActiveVersion
+	if activeVersion == "" {
+		activeVersion = "v1"
+	}
+
 	selRes, err := s.selector.SelectNextQuestion(ctx, selection.SelectionRequest{
 		SessionID:         sessionID,
 		BankID:            sess.BankID.String,
 		NormalPosition:    normalPos,
-		ProjectionVersion: "v1",
+		ProjectionVersion: activeVersion,
 		NowMicro:          nowMicro,
 	})
 	if err != nil {
@@ -407,8 +419,15 @@ func (s *Service) NextQuestion(
 	// 4. Reservation transaction: re-verify state and atomically persist question instance
 	var result *NextResult
 	err = core.RunInTx(ctx, s.db, func(tc *core.TxnContext) error {
-		// Maintenance check
-		if err := core.CheckMaintenance(tc); err != nil {
+		// Maintenance check and projection version consistency verification
+		pcInTx, err := core.GetProjectionControl(tc)
+		if err != nil {
+			return fmt.Errorf("get projection control in reservation: %w", err)
+		}
+		if pcInTx.Mode == "rebuilding" {
+			return ErrMaintenance
+		}
+		if pcInTx.ActiveVersion != activeVersion {
 			return ErrMaintenance
 		}
 
@@ -418,7 +437,7 @@ func (s *Service) NextQuestion(
 			curCursor int64
 			curRev    int64
 		)
-		err := tc.QueryRow("SELECT status, cursor, revision FROM session WHERE id = ?", sessionID).Scan(&curStatus, &curCursor, &curRev)
+		err = tc.QueryRow("SELECT status, cursor, revision FROM session WHERE id = ?", sessionID).Scan(&curStatus, &curCursor, &curRev)
 		if errors.Is(err, sql.ErrNoRows) {
 			return ErrSessionNotFound
 		}

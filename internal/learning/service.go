@@ -15,14 +15,12 @@ type LearningService struct {
 	policy                   FSRSPolicyConfig
 	observationPolicyVersion string
 	projectionVersion        string
+	isReplay                 bool
 }
 
 func NewLearningService(db *sql.DB, policy FSRSPolicyConfig, observationPolicyVersion, projectionVersion string) *LearningService {
 	if observationPolicyVersion == "" {
 		observationPolicyVersion = "observation-v2"
-	}
-	if projectionVersion == "" {
-		projectionVersion = "v1"
 	}
 	return &LearningService{
 		db:                       db,
@@ -30,6 +28,7 @@ func NewLearningService(db *sql.DB, policy FSRSPolicyConfig, observationPolicyVe
 		policy:                   policy,
 		observationPolicyVersion: observationPolicyVersion,
 		projectionVersion:        projectionVersion,
+		isReplay:                 false,
 	}
 }
 
@@ -128,10 +127,30 @@ func (s *LearningService) ApplyAttempt(tc *core.TxnContext, attempt *AttemptEven
 	// 5. Classify eligibility
 	decision := ClassifyEligibility(attempt, isDisputedOrInvalidated)
 
+	// Resolve projection version for projections
+	projVersion := s.projectionVersion
+	if !s.isReplay {
+		pc, err := core.GetProjectionControl(tc)
+		if err != nil && err != sql.ErrNoRows {
+			return nil, fmt.Errorf("get projection control: %w", err)
+		}
+		if err == nil {
+			if pc.Mode == "rebuilding" {
+				return nil, core.ErrUnderMaintenance
+			}
+			if pc.ActiveVersion != "" {
+				projVersion = pc.ActiveVersion
+			}
+		}
+	}
+	if projVersion == "" {
+		projVersion = "v1"
+	}
+
 	// 6. FSRS Review & Memory Projection
 	var reviewEvent *ReviewEvent
 	if decision.FSRSReview {
-		review, err := s.applyFSRS(tc, attempt)
+		review, err := s.applyFSRS(tc, attempt, projVersion)
 		if err != nil {
 			return nil, fmt.Errorf("apply fsrs review: %w", err)
 		}
@@ -139,12 +158,12 @@ func (s *LearningService) ApplyAttempt(tc *core.TxnContext, attempt *AttemptEven
 	}
 
 	// 7. Evidence Projection
-	if err := s.updateEvidence(tc, attempt, decision); err != nil {
+	if err := s.updateEvidence(tc, attempt, decision, projVersion); err != nil {
 		return nil, fmt.Errorf("update evidence projection: %w", err)
 	}
 
 	// 8. Confusion Projection
-	if err := s.updateConfusion(tc, attempt, options, decision); err != nil {
+	if err := s.updateConfusion(tc, attempt, options, decision, projVersion); err != nil {
 		return nil, fmt.Errorf("update confusion projection: %w", err)
 	}
 
@@ -156,7 +175,7 @@ func (s *LearningService) ApplyAttempt(tc *core.TxnContext, attempt *AttemptEven
 	return reviewEvent, nil
 }
 
-func (s *LearningService) applyFSRS(tc *core.TxnContext, attempt *AttemptEvent) (*ReviewEvent, error) {
+func (s *LearningService) applyFSRS(tc *core.TxnContext, attempt *AttemptEvent, projVersion string) (*ReviewEvent, error) {
 	// Load existing memory projection
 	var mem MemoryProjection
 	var lastReviewAt sql.NullInt64
@@ -165,7 +184,7 @@ func (s *LearningService) applyFSRS(tc *core.TxnContext, attempt *AttemptEvent) 
 		FROM memory_projection
 		WHERE projection_version = ? AND sense_id = ? AND task_family = ?
 	`
-	err := tc.QueryRow(queryMem, s.projectionVersion, attempt.SenseID, attempt.TaskFamily).Scan(
+	err := tc.QueryRow(queryMem, projVersion, attempt.SenseID, attempt.TaskFamily).Scan(
 		&mem.FSRSState,
 		&mem.FSRSStep,
 		&mem.Stability,
@@ -285,7 +304,7 @@ func (s *LearningService) applyFSRS(tc *core.TxnContext, attempt *AttemptEvent) 
 	`
 	_, err = tc.Exec(
 		queryUpsertMem,
-		s.projectionVersion,
+		projVersion,
 		attempt.SenseID,
 		attempt.TaskFamily,
 		int(nextCard.State),
@@ -308,7 +327,7 @@ func (s *LearningService) applyFSRS(tc *core.TxnContext, attempt *AttemptEvent) 
 	return review, nil
 }
 
-func (s *LearningService) updateEvidence(tc *core.TxnContext, attempt *AttemptEvent, decision EligibilityDecision) error {
+func (s *LearningService) updateEvidence(tc *core.TxnContext, attempt *AttemptEvent, decision EligibilityDecision, projVersion string) error {
 	var ev EvidenceProjection
 	var lastObservedAt, earliestObservedAt sql.NullInt64
 	var lastCorrect sql.NullInt64
@@ -322,7 +341,7 @@ func (s *LearningService) updateEvidence(tc *core.TxnContext, attempt *AttemptEv
 		FROM evidence_projection
 		WHERE projection_version = ? AND sense_id = ? AND task_family = ?
 	`
-	err := tc.QueryRow(queryEv, s.projectionVersion, attempt.SenseID, attempt.TaskFamily).Scan(
+	err := tc.QueryRow(queryEv, projVersion, attempt.SenseID, attempt.TaskFamily).Scan(
 		&ev.OrdinarySamples,
 		&ev.OrdinaryCorrect,
 		&ev.NormalSamples,
@@ -457,7 +476,7 @@ func (s *LearningService) updateEvidence(tc *core.TxnContext, attempt *AttemptEv
 	`
 	_, err = tc.Exec(
 		queryUpsertEv,
-		s.projectionVersion,
+		projVersion,
 		attempt.SenseID,
 		attempt.TaskFamily,
 		ev.OrdinarySamples,
@@ -487,7 +506,7 @@ func (s *LearningService) updateEvidence(tc *core.TxnContext, attempt *AttemptEv
 	return nil
 }
 
-func (s *LearningService) updateConfusion(tc *core.TxnContext, attempt *AttemptEvent, options []InstanceOption, decision EligibilityDecision) error {
+func (s *LearningService) updateConfusion(tc *core.TxnContext, attempt *AttemptEvent, options []InstanceOption, decision EligibilityDecision, projVersion string) error {
 	statGroup := ConfusionStatGroupUncertain
 	if decision.OrdinaryConfusion {
 		statGroup = ConfusionStatGroupOrdinary
@@ -528,7 +547,7 @@ func (s *LearningService) updateConfusion(tc *core.TxnContext, attempt *AttemptE
 		`
 		_, err := tc.Exec(
 			queryUpsertConf,
-			s.projectionVersion,
+			projVersion,
 			attempt.SenseID,
 			attempt.TaskFamily,
 			opt.OptionIdentityID,

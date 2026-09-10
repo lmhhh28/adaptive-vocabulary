@@ -40,7 +40,7 @@ func NewHandler(db *sql.DB, policyPath string) (*Handler, error) {
 		}
 	}
 
-	learningSvc := learning.NewLearningService(db, *fsrsPolicy, "observation-v2", "v1")
+	learningSvc := learning.NewLearningService(db, *fsrsPolicy, "observation-v2", "")
 	assembler := NewAssembler(db, 20000)
 	svc := NewService(db, learningSvc, assembler)
 

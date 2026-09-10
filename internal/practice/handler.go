@@ -61,7 +61,7 @@ func NewHandler(db *sql.DB, policyPath string) (*Handler, error) {
 		}
 	}
 
-	learningSvc := learning.NewLearningService(db, *fsrsPolicy, "observation-v2", "v1")
+	learningSvc := learning.NewLearningService(db, *fsrsPolicy, "observation-v2", "")
 	selector := selection.NewSelector(db, *selCfg)
 	svc := NewService(db, learningSvc, selector)
 

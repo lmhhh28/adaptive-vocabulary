@@ -199,3 +199,60 @@ func TestPracticeFullLifecycle(t *testing.T) {
 		t.Fatalf("expected ErrSessionClosed, got %v", err)
 	}
 }
+
+func TestActiveProjectionVersionSwitch(t *testing.T) {
+	db, svc, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	ctx := context.Background()
+	bankID := "00000000-0000-4000-8000-000000000801"
+
+	// 1. Switch active_version to v2
+	_, err := db.Exec("UPDATE projection_control SET active_version = 'v2', updated_at = 100 WHERE id = 1")
+	if err != nil {
+		t.Fatalf("update active_version: %v", err)
+	}
+
+	// 2. Create session and get next question
+	sess, _, err := svc.CreateOrResumeSession(ctx, bankID, "", "")
+	if err != nil {
+		t.Fatalf("create session: %v", err)
+	}
+
+	nextRes, err := svc.NextQuestion(ctx, sess.ID, 0)
+	if err != nil {
+		t.Fatalf("next question: %v", err)
+	}
+	if nextRes.Question == nil {
+		t.Fatalf("expected question, got nil")
+	}
+
+	// 3. Submit attempt
+	optID := nextRes.Question.Options[0].ID
+	fb, _, err := svc.SubmitAttempt(ctx, sess.ID, SubmitAttemptRequest{
+		InstanceID: nextRes.Question.InstanceID,
+		OptionID:   optID,
+	}, "", "", "")
+	if err != nil {
+		t.Fatalf("submit attempt: %v", err)
+	}
+	if fb == nil {
+		t.Fatalf("expected feedback, got nil")
+	}
+
+	// 4. Verify evidence_projection was written to v2, not v1
+	var v1Count, v2Count int
+	if err := db.QueryRow("SELECT COUNT(*) FROM evidence_projection WHERE projection_version = 'v1'").Scan(&v1Count); err != nil {
+		t.Fatalf("query v1 evidence: %v", err)
+	}
+	if err := db.QueryRow("SELECT COUNT(*) FROM evidence_projection WHERE projection_version = 'v2'").Scan(&v2Count); err != nil {
+		t.Fatalf("query v2 evidence: %v", err)
+	}
+
+	if v1Count != 0 {
+		t.Fatalf("expected 0 v1 evidence records, got %d", v1Count)
+	}
+	if v2Count == 0 {
+		t.Fatalf("expected at least 1 v2 evidence record, got %d", v2Count)
+	}
+}
