@@ -183,7 +183,12 @@ func (s *Service) GetBank(ctx context.Context, bankID string) (*BankDetail, erro
 		FROM bank_sense bs
 		JOIN sense s ON bs.sense_id = s.id
 		JOIN lexeme l ON s.lexeme_id = l.id
-		JOIN sense_version sv ON s.id = sv.sense_id
+		JOIN sense_version sv ON sv.id = (
+			SELECT sv2.id FROM sense_version sv2
+			WHERE sv2.sense_id = s.id
+			ORDER BY sv2.version_number DESC, sv2.created_at DESC
+			LIMIT 1
+		)
 		WHERE bs.bank_id = ?
 		ORDER BY bs.added_at ASC, l.canonical_form ASC
 	`, bankID)

@@ -328,6 +328,10 @@ func (s *LearningService) applyFSRS(tc *core.TxnContext, attempt *AttemptEvent, 
 }
 
 func (s *LearningService) updateEvidence(tc *core.TxnContext, attempt *AttemptEvent, decision EligibilityDecision, projVersion string) error {
+	if !decision.IsValid {
+		return nil
+	}
+
 	var ev EvidenceProjection
 	var lastObservedAt, earliestObservedAt sql.NullInt64
 	var lastCorrect sql.NullInt64
@@ -507,6 +511,10 @@ func (s *LearningService) updateEvidence(tc *core.TxnContext, attempt *AttemptEv
 }
 
 func (s *LearningService) updateConfusion(tc *core.TxnContext, attempt *AttemptEvent, options []InstanceOption, decision EligibilityDecision, projVersion string) error {
+	if !decision.IsValid {
+		return nil
+	}
+
 	statGroup := ConfusionStatGroupUncertain
 	if decision.OrdinaryConfusion {
 		statGroup = ConfusionStatGroupOrdinary

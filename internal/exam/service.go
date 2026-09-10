@@ -726,6 +726,21 @@ func (s *Service) RecordTelemetryGap(
 	var res *TelemetryGapsResponse
 
 	err := core.RunInTx(ctx, s.db, func(tc *core.TxnContext) error {
+		// Check idempotency first before session state check
+		if idempotencyKey != "" {
+			rec, err := core.CheckIdempotency(tc, "POST", fmt.Sprintf("/api/v1/exams/%s/telemetry-gaps", examID), idempotencyKey, requestDigest)
+			if errors.Is(err, core.ErrIdempotencyConflict) {
+				return err
+			}
+			if rec != nil {
+				var savedRes TelemetryGapsResponse
+				if err := json.Unmarshal([]byte(rec.ResponseBody), &savedRes); err == nil {
+					res = &savedRes
+					return nil
+				}
+			}
+		}
+
 		if err := core.CheckMaintenance(tc); err != nil {
 			return ErrMaintenance
 		}
@@ -745,21 +760,6 @@ func (s *Service) RecordTelemetryGap(
 		}
 		if status != "open" {
 			return ErrSessionClosed
-		}
-
-		// Check idempotency
-		if idempotencyKey != "" {
-			rec, err := core.CheckIdempotency(tc, "POST", fmt.Sprintf("/api/v1/exams/%s/telemetry-gaps", examID), idempotencyKey, requestDigest)
-			if errors.Is(err, core.ErrIdempotencyConflict) {
-				return err
-			}
-			if rec != nil {
-				var savedRes TelemetryGapsResponse
-				if err := json.Unmarshal([]byte(rec.ResponseBody), &savedRes); err == nil {
-					res = &savedRes
-					return nil
-				}
-			}
 		}
 
 		// CAS check on expected_revision

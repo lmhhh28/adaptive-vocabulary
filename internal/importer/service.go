@@ -26,6 +26,7 @@ var (
 	ErrSourceConflict      = errors.New("duplicate entry for source and version")
 	ErrMaintenance         = errors.New("system under maintenance")
 	ErrIdempotencyConflict = core.ErrIdempotencyConflict
+	ErrInvalidItemStatus   = errors.New("import item cannot be resolved in its current status")
 )
 
 type Service struct {
@@ -368,7 +369,12 @@ func (s *Service) ImportBankVocabulary(
 					rows, err := tc.Query(`
 						SELECT s.id, s.lexeme_id, s.part_of_speech, sv.meaning, s.source_id
 						FROM sense s
-						JOIN sense_version sv ON sv.sense_id = s.id
+						JOIN sense_version sv ON sv.id = (
+							SELECT sv2.id FROM sense_version sv2
+							WHERE sv2.sense_id = s.id
+							ORDER BY sv2.version_number DESC, sv2.created_at DESC
+							LIMIT 1
+						)
 						WHERE s.lexeme_id = ?
 						ORDER BY s.created_at ASC
 					`, lexemeID)
@@ -432,10 +438,15 @@ func (s *Service) ImportBankVocabulary(
 				INSERT OR IGNORE INTO bank_sense (bank_id, sense_id, added_at)
 				VALUES (?, ?, ?)
 			`, bankID, sID, now)
-			if err == nil {
-				if aff, _ := res.RowsAffected(); aff > 0 {
-					newMembersAdded++
-				}
+			if err != nil {
+				return fmt.Errorf("insert bank_sense: %w", err)
+			}
+			aff, err := res.RowsAffected()
+			if err != nil {
+				return fmt.Errorf("bank_sense rows affected: %w", err)
+			}
+			if aff > 0 {
+				newMembersAdded++
 			}
 		}
 
@@ -708,6 +719,11 @@ func (s *Service) ResolveImportItem(
 			return ErrRevisionConflict
 		}
 
+		// Status check: only ambiguous or not_found items can be resolved/excluded
+		if status != "ambiguous" && status != "not_found" {
+			return ErrInvalidItemStatus
+		}
+
 		now := time.Now().UTC().UnixMicro()
 		newRev := currentRev + 1
 		oldStatus := status
@@ -733,10 +749,15 @@ func (s *Service) ResolveImportItem(
 						INSERT OR IGNORE INTO bank_sense (bank_id, sense_id, added_at)
 						VALUES (?, ?, ?)
 					`, bankID.String, sID, now)
-					if err == nil {
-						if aff, _ := res.RowsAffected(); aff > 0 {
-							membersAdded++
-						}
+					if err != nil {
+						return fmt.Errorf("insert bank_sense: %w", err)
+					}
+					aff, err := res.RowsAffected()
+					if err != nil {
+						return fmt.Errorf("bank_sense rows affected: %w", err)
+					}
+					if aff > 0 {
+						membersAdded++
 					}
 				}
 				if membersAdded > 0 {

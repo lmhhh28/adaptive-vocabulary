@@ -131,3 +131,56 @@ func TestBankCRUDAndLifecycle(t *testing.T) {
 		t.Errorf("archived bank should preserve its remaining members, got %d", len(archivedDetail.Members))
 	}
 }
+
+func TestGetBankMultiVersionSenseNoDuplicates(t *testing.T) {
+	db, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	ctx := context.Background()
+	if err := content.ApplySeed(ctx, db, "core"); err != nil {
+		t.Fatalf("apply seed core: %v", err)
+	}
+
+	svc := NewService(db)
+	newBank, err := svc.CreateBank(ctx, "Single Member Bank", "")
+	if err != nil {
+		t.Fatalf("create bank: %v", err)
+	}
+
+	// Pick a sense from seed
+	var senseID string
+	err = db.QueryRow("SELECT id FROM sense LIMIT 1").Scan(&senseID)
+	if err != nil {
+		t.Fatalf("query sense: %v", err)
+	}
+
+	now := 1000000
+	_, err = db.Exec("INSERT INTO bank_sense (bank_id, sense_id, added_at) VALUES (?, ?, ?)", newBank.ID, senseID, now)
+	if err != nil {
+		t.Fatalf("insert bank_sense: %v", err)
+	}
+
+	// Add a version 2 to this sense
+	_, err = db.Exec(`
+		INSERT INTO sense_version (id, sense_id, version_number, meaning, created_at)
+		VALUES ('ver-test-2', ?, 2, 'New meaning v2', ?)
+	`, senseID, now+1000)
+	if err != nil {
+		t.Fatalf("insert sense_version v2: %v", err)
+	}
+
+	detail, err := svc.GetBank(ctx, newBank.ID)
+	if err != nil {
+		t.Fatalf("GetBank: %v", err)
+	}
+	if detail.MemberCount != 1 {
+		t.Fatalf("expected member_count 1, got %d", detail.MemberCount)
+	}
+	if len(detail.Members) != 1 {
+		t.Fatalf("expected 1 member row, got %d", len(detail.Members))
+	}
+	if detail.Members[0].Meaning != "New meaning v2" {
+		t.Fatalf("expected latest meaning 'New meaning v2', got %q", detail.Members[0].Meaning)
+	}
+}
+

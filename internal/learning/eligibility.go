@@ -4,6 +4,7 @@ package learning
 func ClassifyEligibility(attempt *AttemptEvent, isDisputedOrInvalidated bool) EligibilityDecision {
 	if isDisputedOrInvalidated {
 		return EligibilityDecision{
+			IsValid:             false,
 			OrdinaryEvidence:    false,
 			OrdinaryConfusion:   false,
 			UpdateConsolidation: false,
@@ -18,6 +19,7 @@ func ClassifyEligibility(attempt *AttemptEvent, isDisputedOrInvalidated bool) El
 		switch attempt.Purpose {
 		case PurposeNormal:
 			return EligibilityDecision{
+				IsValid:             true,
 				OrdinaryEvidence:    true,
 				OrdinaryConfusion:   true,
 				UpdateConsolidation: true,
@@ -27,6 +29,7 @@ func ClassifyEligibility(attempt *AttemptEvent, isDisputedOrInvalidated bool) El
 			}
 		case PurposeEarlyReview:
 			return EligibilityDecision{
+				IsValid:             true,
 				OrdinaryEvidence:    true,
 				OrdinaryConfusion:   true,
 				UpdateConsolidation: true,
@@ -36,6 +39,7 @@ func ClassifyEligibility(attempt *AttemptEvent, isDisputedOrInvalidated bool) El
 			}
 		case PurposeCorrection:
 			return EligibilityDecision{
+				IsValid:             true,
 				OrdinaryEvidence:    false,
 				OrdinaryConfusion:   false,
 				UpdateConsolidation: false,
@@ -51,6 +55,7 @@ func ClassifyEligibility(attempt *AttemptEvent, isDisputedOrInvalidated bool) El
 		switch attempt.ResponseHistory {
 		case ResponseSingleResponse:
 			return EligibilityDecision{
+				IsValid:             true,
 				OrdinaryEvidence:    true,
 				OrdinaryConfusion:   true,
 				UpdateConsolidation: true,
@@ -60,6 +65,7 @@ func ClassifyEligibility(attempt *AttemptEvent, isDisputedOrInvalidated bool) El
 			}
 		case ResponseRevised:
 			return EligibilityDecision{
+				IsValid:             true,
 				OrdinaryEvidence:    false,
 				OrdinaryConfusion:   false,
 				UpdateConsolidation: false,
@@ -69,6 +75,7 @@ func ClassifyEligibility(attempt *AttemptEvent, isDisputedOrInvalidated bool) El
 			}
 		case ResponseTelemetryIncomplete:
 			return EligibilityDecision{
+				IsValid:             true,
 				OrdinaryEvidence:    false,
 				OrdinaryConfusion:   false,
 				UpdateConsolidation: false,

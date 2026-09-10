@@ -437,9 +437,30 @@ func (h *Handler) handleSubmitExam(w http.ResponseWriter, r *http.Request, examI
 }
 
 func (h *Handler) handleAbandonExam(w http.ResponseWriter, r *http.Request, examID string) {
-	bodyBytes, _ := io.ReadAll(r.Body)
-	var req AbandonExamRequest
-	_ = json.Unmarshal(bodyBytes, &req)
+	bodyBytes, err := io.ReadAll(r.Body)
+	if err != nil {
+		core.WriteJSONError(w, r, http.StatusBadRequest, "INVALID_REQUEST", "failed to read request body", nil)
+		return
+	}
+	if len(bodyBytes) == 0 {
+		core.WriteJSONError(w, r, http.StatusBadRequest, "INVALID_REQUEST", "request body cannot be empty", nil)
+		return
+	}
+	var raw struct {
+		ExpectedRevision *int64 `json:"expected_revision"`
+	}
+	if err := json.Unmarshal(bodyBytes, &raw); err != nil {
+		core.WriteJSONError(w, r, http.StatusBadRequest, "INVALID_REQUEST", "malformed JSON request body", nil)
+		return
+	}
+	if raw.ExpectedRevision == nil {
+		core.WriteJSONError(w, r, http.StatusBadRequest, "INVALID_REQUEST", "expected_revision is required", nil)
+		return
+	}
+
+	req := AbandonExamRequest{
+		ExpectedRevision: *raw.ExpectedRevision,
+	}
 
 	resp, err := h.service.AbandonExam(r.Context(), examID, req)
 	if err != nil {

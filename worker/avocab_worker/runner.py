@@ -32,6 +32,14 @@ class WorkerRunner:
             api_key=config.generator_api_key,
             default_model=config.generator_cfg.get("model", "test-model")
         )
+        self.generator_client = self.provider_client
+
+        eval_base_url = config.evaluator_cfg.get("base_url") or gen_base_url
+        self.evaluator_client = ProviderClient(
+            base_url=eval_base_url,
+            api_key=config.evaluator_api_key,
+            default_model=config.evaluator_cfg.get("model", "test-evaluator")
+        )
 
         db_path = config.data_dir / "langgraph-checkpoints.db"
         self.checkpoint_conn = connect_checkpoint_db(db_path)
@@ -41,7 +49,8 @@ class WorkerRunner:
             go_client=self.go_client,
             provider_client=self.provider_client,
             config=config,
-            checkpointer=self.checkpointer
+            checkpointer=self.checkpointer,
+            evaluator_client=self.evaluator_client
         )
         self.lease_manager = LeaseManager(self.go_client, renew_interval_seconds=30.0)
         self._shutdown = False
@@ -49,6 +58,7 @@ class WorkerRunner:
     def close(self):
         self._shutdown = True
         self.lease_manager.close()
+        self.evaluator_client.close()
         self.provider_client.close()
         self.go_client.close()
         try:

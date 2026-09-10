@@ -446,3 +446,359 @@ func TestCandidatePublishing(t *testing.T) {
 		t.Fatalf("expected published question_version, got status %s, err %v", qvStatus, err)
 	}
 }
+
+func TestLateReconciliationFromUnknownToSettled(t *testing.T) {
+	db, cleanup := setupTestDB(t)
+	defer cleanup()
+	svc := NewService(db, DefaultGenerationConfig())
+
+	ctx := context.Background()
+	now := time.Now().UTC().UnixNano() / 1000
+	bankID := "00000000-0000-4000-8000-000000000801"
+
+	var senseID, senseVersionID string
+	err := db.QueryRow("SELECT s.id, sv.id FROM sense s JOIN sense_version sv ON sv.sense_id = s.id JOIN bank_sense bs ON bs.sense_id = s.id WHERE bs.bank_id = ? LIMIT 1", bankID).Scan(&senseID, &senseVersionID)
+	if err != nil {
+		t.Fatalf("query sense: %v", err)
+	}
+
+	job, _, err := svc.CreateJob(ctx, bankID, CreateJobRequest{
+		SenseRefs:               []SenseRef{{SenseID: senseID, SenseVersionID: senseVersionID}},
+		GenerationConfigVersion: "v1",
+		QualityPolicyVersion:    "v1",
+	}, "", "", now)
+	if err != nil {
+		t.Fatalf("create job: %v", err)
+	}
+
+	claimRes, err := svc.ClaimItems(ctx, ClaimRequest{WorkerID: "w-recon", Limit: 1}, now)
+	if err != nil || len(claimRes.Items) == 0 {
+		t.Fatalf("claim items: %v", err)
+	}
+	item := claimRes.Items[0]
+
+	reserveRes, _, err := svc.ReserveCall(ctx, ReserveRequest{
+		WorkerID:           "w-recon",
+		ItemID:             item.ItemID,
+		FencingToken:       item.FencingToken,
+		InputDigest:        item.InputDigest,
+		LogicalCallKey:     LogicalCallKey{AttemptNumber: 1, Stage: "generator", EvaluationIndex: 0},
+		NetworkAttemptID:   "net-recon-1",
+		ProfileVersion:     "v1",
+		InputSHA256:        "sha-in",
+		InputTokenEstimate: 100,
+		MaxOutputTokens:    100,
+	}, "", "", now)
+	if err != nil {
+		t.Fatalf("reserve call: %v", err)
+	}
+
+	// 1. Settle with unknown
+	settleUnk, err := svc.SettleCall(ctx, reserveRes.ReservationID, SettleRequest{
+		WorkerID:     "w-recon",
+		ItemID:       item.ItemID,
+		FencingToken: item.FencingToken,
+		InputDigest:  item.InputDigest,
+		Outcome:      "unknown",
+	}, now)
+	if err != nil {
+		t.Fatalf("settle unknown failed: %v", err)
+	}
+	if settleUnk.CallStatus != "unknown" {
+		t.Fatalf("expected unknown status, got %s", settleUnk.CallStatus)
+	}
+
+	// 2. Late reconcile with definitive response and usage
+	settleResp, err := svc.SettleCall(ctx, reserveRes.ReservationID, SettleRequest{
+		WorkerID:     "w-recon",
+		ItemID:       item.ItemID,
+		FencingToken: item.FencingToken,
+		InputDigest:  item.InputDigest,
+		Outcome:      "response",
+		Usage:        &TokenUsage{InputTokens: 20, OutputTokens: 30},
+	}, now+1)
+	if err != nil {
+		t.Fatalf("late reconciliation failed: %v", err)
+	}
+	if settleResp.CallStatus != "settled" {
+		t.Fatalf("expected settled status, got %s", settleResp.CallStatus)
+	}
+	if settleResp.AccountedTokens != 50 {
+		t.Fatalf("expected 50 accounted tokens, got %d", settleResp.AccountedTokens)
+	}
+
+	// 3. Verify ledger reflects actual tokens (50 instead of 200)
+	var totTokens int
+	if err := db.QueryRow("SELECT total_tokens FROM generation_budget_ledger WHERE job_id = ?", job.JobID).Scan(&totTokens); err != nil {
+		t.Fatalf("query ledger: %v", err)
+	}
+	if totTokens != 50 {
+		t.Fatalf("expected total_tokens = 50 in ledger, got %d", totTokens)
+	}
+}
+
+func TestSubmitCandidateRejectsMultipleCorrectOrRuleFailure(t *testing.T) {
+	db, cleanup := setupTestDB(t)
+	defer cleanup()
+	svc := NewService(db, DefaultGenerationConfig())
+
+	ctx := context.Background()
+	now := time.Now().UTC().UnixNano() / 1000
+	bankID := "00000000-0000-4000-8000-000000000801"
+
+	var senseID, senseVersionID string
+	err := db.QueryRow("SELECT s.id, sv.id FROM sense s JOIN sense_version sv ON sv.sense_id = s.id JOIN bank_sense bs ON bs.sense_id = s.id WHERE bs.bank_id = ? LIMIT 1", bankID).Scan(&senseID, &senseVersionID)
+	if err != nil {
+		t.Fatalf("query sense: %v", err)
+	}
+
+	_, _, err = svc.CreateJob(ctx, bankID, CreateJobRequest{
+		SenseRefs:               []SenseRef{{SenseID: senseID, SenseVersionID: senseVersionID}},
+		GenerationConfigVersion: "v1",
+		QualityPolicyVersion:    "v1",
+	}, "", "", now)
+	if err != nil {
+		t.Fatalf("create job: %v", err)
+	}
+
+	claimRes, err := svc.ClaimItems(ctx, ClaimRequest{WorkerID: "w-mult", Limit: 1}, now)
+	if err != nil || len(claimRes.Items) == 0 {
+		t.Fatalf("claim items: %v", err)
+	}
+	item := claimRes.Items[0]
+
+	genRes, _, err := svc.ReserveCall(ctx, ReserveRequest{
+		WorkerID:           "w-mult",
+		ItemID:             item.ItemID,
+		FencingToken:       item.FencingToken,
+		InputDigest:        item.InputDigest,
+		LogicalCallKey:     LogicalCallKey{AttemptNumber: 1, Stage: "generator", EvaluationIndex: 0},
+		NetworkAttemptID:   "net-mult-gen",
+		ProfileVersion:     "v1",
+		InputSHA256:        "sha-in",
+		InputTokenEstimate: 10,
+		MaxOutputTokens:    10,
+	}, "", "", now)
+	if err != nil {
+		t.Fatalf("reserve gen: %v", err)
+	}
+	_, _ = svc.SettleCall(ctx, genRes.ReservationID, SettleRequest{WorkerID: "w-mult", ItemID: item.ItemID, FencingToken: item.FencingToken, InputDigest: item.InputDigest, Outcome: "response"}, now)
+
+	evalRes1, _, _ := svc.ReserveCall(ctx, ReserveRequest{
+		WorkerID:           "w-mult",
+		ItemID:             item.ItemID,
+		FencingToken:       item.FencingToken,
+		InputDigest:        item.InputDigest,
+		LogicalCallKey:     LogicalCallKey{AttemptNumber: 1, Stage: "evaluator", EvaluationIndex: 0},
+		NetworkAttemptID:   "net-mult-e1",
+		ProfileVersion:     "v1",
+		InputSHA256:        "sha-in",
+		InputTokenEstimate: 10,
+		MaxOutputTokens:    10,
+	}, "", "", now)
+	_, _ = svc.SettleCall(ctx, evalRes1.ReservationID, SettleRequest{WorkerID: "w-mult", ItemID: item.ItemID, FencingToken: item.FencingToken, InputDigest: item.InputDigest, Outcome: "response"}, now)
+
+	evalRes2, _, _ := svc.ReserveCall(ctx, ReserveRequest{
+		WorkerID:           "w-mult",
+		ItemID:             item.ItemID,
+		FencingToken:       item.FencingToken,
+		InputDigest:        item.InputDigest,
+		LogicalCallKey:     LogicalCallKey{AttemptNumber: 1, Stage: "evaluator", EvaluationIndex: 1},
+		NetworkAttemptID:   "net-mult-e2",
+		ProfileVersion:     "v1",
+		InputSHA256:        "sha-in",
+		InputTokenEstimate: 10,
+		MaxOutputTokens:    10,
+	}, "", "", now)
+	_, _ = svc.SettleCall(ctx, evalRes2.ReservationID, SettleRequest{WorkerID: "w-mult", ItemID: item.ItemID, FencingToken: item.FencingToken, InputDigest: item.InputDigest, Outcome: "response"}, now)
+
+	passRatings := map[string]string{
+		"target_meaning":          "pass",
+		"unique_answer":           "pass",
+		"grammar":                 "pass",
+		"naturalness":             "pass",
+		"explanation_consistency": "pass",
+		"distractor_validity":     "pass",
+	}
+
+	// Content with two correct options
+	candContent := CandidateContent{
+		TaskFamily: "meaning_recognition",
+		Stem:       "valid stem",
+		Options: []CandidateOption{
+			{ID: "opt-1", Text: "A", Language: "zh", IsCorrect: true},
+			{ID: "opt-2", Text: "B", Language: "zh", IsCorrect: true},
+			{ID: "opt-3", Text: "C", Language: "zh", IsCorrect: false},
+			{ID: "opt-4", Text: "D", Language: "zh", IsCorrect: false},
+		},
+	}
+
+	subResp, _, err := svc.SubmitCandidate(ctx, SubmitCandidateRequest{
+		WorkerID:       "w-mult",
+		ItemID:         item.ItemID,
+		FencingToken:   item.FencingToken,
+		InputDigest:    item.InputDigest,
+		AttemptNumber:  1,
+		CandidateIndex: 0,
+		Content:        candContent,
+		GenerationMetadata: GenerationMetadata{
+			GeneratorReservationID:  genRes.ReservationID,
+			EvaluatorReservationIDs: []string{evalRes1.ReservationID, evalRes2.ReservationID},
+		},
+		Checks: CandidateChecks{
+			RuleChecks: map[string]any{"single_correct": false},
+			SemanticEvaluations: []SemanticEvaluation{
+				{ProfileVersion: "v1", Model: "eval-1", Ratings: passRatings},
+				{ProfileVersion: "v1", Model: "eval-2", Ratings: passRatings},
+			},
+			Result: "pass",
+		},
+	}, "", "", now)
+	if err != nil {
+		t.Fatalf("submit candidate: %v", err)
+	}
+
+	if subResp.Disposition != "rejected" {
+		t.Fatalf("expected rejected due to single_correct=false, got %s", subResp.Disposition)
+	}
+}
+
+func TestOptionIdentityReusedWithoutDanglingReference(t *testing.T) {
+	db, cleanup := setupTestDB(t)
+	defer cleanup()
+	svc := NewService(db, DefaultGenerationConfig())
+
+	ctx := context.Background()
+	now := time.Now().UTC().UnixNano() / 1000
+	bankID := "00000000-0000-4000-8000-000000000801"
+
+	var senseID, senseVersionID string
+	err := db.QueryRow("SELECT s.id, sv.id FROM sense s JOIN sense_version sv ON sv.sense_id = s.id JOIN bank_sense bs ON bs.sense_id = s.id WHERE bs.bank_id = ? LIMIT 1", bankID).Scan(&senseID, &senseVersionID)
+	if err != nil {
+		t.Fatalf("query sense: %v", err)
+	}
+
+	_, _, err = svc.CreateJob(ctx, bankID, CreateJobRequest{
+		SenseRefs:               []SenseRef{{SenseID: senseID, SenseVersionID: senseVersionID}, {SenseID: senseID, SenseVersionID: senseVersionID}},
+		GenerationConfigVersion: "v1",
+		QualityPolicyVersion:    "v1",
+	}, "", "", now)
+	if err != nil {
+		t.Fatalf("create job: %v", err)
+	}
+
+	passRatings := map[string]string{
+		"target_meaning":          "pass",
+		"unique_answer":           "pass",
+		"grammar":                 "pass",
+		"naturalness":             "pass",
+		"explanation_consistency": "pass",
+		"distractor_validity":     "pass",
+	}
+
+	publishWithStem := func(item ClaimedItem, stem string, timeOffset int64) string {
+		genRes, _, _ := svc.ReserveCall(ctx, ReserveRequest{
+			WorkerID:           "w-opt",
+			ItemID:             item.ItemID,
+			FencingToken:       item.FencingToken,
+			InputDigest:        item.InputDigest,
+			LogicalCallKey:     LogicalCallKey{AttemptNumber: 1, Stage: "generator", EvaluationIndex: 0},
+			NetworkAttemptID:   core.NewUUID(),
+			ProfileVersion:     "v1",
+			InputSHA256:        "sha-in",
+			InputTokenEstimate: 10,
+			MaxOutputTokens:    10,
+		}, "", "", now+timeOffset)
+		_, _ = svc.SettleCall(ctx, genRes.ReservationID, SettleRequest{WorkerID: "w-opt", ItemID: item.ItemID, FencingToken: item.FencingToken, InputDigest: item.InputDigest, Outcome: "response"}, now+timeOffset)
+
+		evalRes1, _, _ := svc.ReserveCall(ctx, ReserveRequest{
+			WorkerID:           "w-opt",
+			ItemID:             item.ItemID,
+			FencingToken:       item.FencingToken,
+			InputDigest:        item.InputDigest,
+			LogicalCallKey:     LogicalCallKey{AttemptNumber: 1, Stage: "evaluator", EvaluationIndex: 0},
+			NetworkAttemptID:   core.NewUUID(),
+			ProfileVersion:     "v1",
+			InputSHA256:        "sha-in",
+			InputTokenEstimate: 10,
+			MaxOutputTokens:    10,
+		}, "", "", now+timeOffset)
+		_, _ = svc.SettleCall(ctx, evalRes1.ReservationID, SettleRequest{WorkerID: "w-opt", ItemID: item.ItemID, FencingToken: item.FencingToken, InputDigest: item.InputDigest, Outcome: "response"}, now+timeOffset)
+
+		evalRes2, _, _ := svc.ReserveCall(ctx, ReserveRequest{
+			WorkerID:           "w-opt",
+			ItemID:             item.ItemID,
+			FencingToken:       item.FencingToken,
+			InputDigest:        item.InputDigest,
+			LogicalCallKey:     LogicalCallKey{AttemptNumber: 1, Stage: "evaluator", EvaluationIndex: 1},
+			NetworkAttemptID:   core.NewUUID(),
+			ProfileVersion:     "v1",
+			InputSHA256:        "sha-in",
+			InputTokenEstimate: 10,
+			MaxOutputTokens:    10,
+		}, "", "", now+timeOffset)
+		_, _ = svc.SettleCall(ctx, evalRes2.ReservationID, SettleRequest{WorkerID: "w-opt", ItemID: item.ItemID, FencingToken: item.FencingToken, InputDigest: item.InputDigest, Outcome: "response"}, now+timeOffset)
+
+		opts := []CandidateOption{
+			{ID: "opt-1", Text: "same option 1", Language: "zh", IsCorrect: true},
+			{ID: "opt-2", Text: "same option 2", Language: "zh", IsCorrect: false},
+			{ID: "opt-3", Text: "same option 3", Language: "zh", IsCorrect: false},
+			{ID: "opt-4", Text: "same option 4", Language: "zh", IsCorrect: false},
+		}
+
+		resp, _, err := svc.SubmitCandidate(ctx, SubmitCandidateRequest{
+			WorkerID:       "w-opt",
+			ItemID:         item.ItemID,
+			FencingToken:   item.FencingToken,
+			InputDigest:    item.InputDigest,
+			AttemptNumber:  1,
+			CandidateIndex: 0,
+			Content: CandidateContent{
+				TaskFamily: "meaning_recognition",
+				Stem:       stem,
+				Options:    opts,
+			},
+			GenerationMetadata: GenerationMetadata{
+				GeneratorReservationID:  genRes.ReservationID,
+				EvaluatorReservationIDs: []string{evalRes1.ReservationID, evalRes2.ReservationID},
+			},
+			Checks: CandidateChecks{
+				RuleChecks: map[string]any{"single_correct": true, "options_count": 4, "stem_valid": true},
+				SemanticEvaluations: []SemanticEvaluation{
+					{ProfileVersion: "v1", Model: "eval-1", Ratings: passRatings},
+					{ProfileVersion: "v1", Model: "eval-2", Ratings: passRatings},
+				},
+				Result: "pass",
+			},
+		}, "", "", now+timeOffset)
+		if err != nil {
+			t.Fatalf("submit candidate %s: %v", stem, err)
+		}
+		if resp.Disposition != "published" || resp.PublishedVersionID == nil {
+			t.Fatalf("expected published, got %+v", resp)
+		}
+		return *resp.PublishedVersionID
+	}
+
+	claimRes, err := svc.ClaimItems(ctx, ClaimRequest{WorkerID: "w-opt", Limit: 2}, now)
+	if err != nil || len(claimRes.Items) < 2 {
+		t.Fatalf("claim items: %v", err)
+	}
+
+	publishWithStem(claimRes.Items[0], "First Stem", 0)
+	qv2 := publishWithStem(claimRes.Items[1], "Second Stem", 10)
+
+	var missing int
+	err = db.QueryRow(`
+		SELECT count(*)
+		FROM question_version q, json_each(q.options_json) o
+		LEFT JOIN option_identity oi ON oi.id = json_extract(o.value, '$.option_identity_id')
+		WHERE q.id = ? AND oi.id IS NULL
+	`, qv2).Scan(&missing)
+	if err != nil {
+		t.Fatalf("query missing option identities: %v", err)
+	}
+	if missing != 0 {
+		t.Fatalf("expected 0 missing option identities, got %d", missing)
+	}
+}

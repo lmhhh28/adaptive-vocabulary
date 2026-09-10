@@ -285,3 +285,99 @@ func TestApplyAttemptAndReplay(t *testing.T) {
 		t.Fatalf("projections not identical: %s", diff)
 	}
 }
+
+func TestReplayInvalidatedAttemptExcludesSubgroupsAndConfusion(t *testing.T) {
+	db, dir := setupTestDB(t)
+	defer os.RemoveAll(dir)
+	defer db.Close()
+
+	ctx := context.Background()
+
+	// Seed fixtures
+	_, err := db.Exec(`
+		INSERT INTO source (id, name, location, source_version, license, usage_scope, created_at, updated_at)
+		VALUES ('src1', 'src', 'loc', 'v1', 'mit', 'test', 1, 1);
+		INSERT INTO lexeme (id, canonical_form, created_at) VALUES ('lex_bank', 'bank', 1);
+		INSERT INTO sense (id, lexeme_id, part_of_speech, source_id, created_at) VALUES ('sense_bank', 'lex_bank', 'n', 'src1', 1);
+		INSERT INTO sense_version (id, sense_id, meaning, created_at) VALUES ('sv_bank', 'sense_bank', '银行', 1);
+		INSERT INTO option_identity (id, canonical_key, language, normalized_text, sense_id, source_id, created_at)
+		VALUES ('ident_dist', 'k_dist', 'zh', '河流', 'sense_bank', 'src1', 1),
+		       ('ident_corr', 'k_corr', 'zh', '银行', 'sense_bank', 'src1', 1);
+		INSERT INTO question_form (id, sense_id, task_family, dedup_hash, normalized_stem, created_at)
+		VALUES ('form_b', 'sense_bank', 'meaning_recognition', 'hash_b', 'stem', 1);
+		INSERT INTO question_version (id, form_id, sense_id, sense_version_id, task_family, stem, options_json, correct_option_id, explanation, created_at, updated_at)
+		VALUES ('qv_b', 'form_b', 'sense_bank', 'sv_bank', 'meaning_recognition', 'stem', '[]', 'opt_correct', 'exp', 1, 1);
+		INSERT INTO session (id, kind, status, created_at, updated_at) VALUES ('sess_inv_1', 'practice', 'open', 1, 1);
+		INSERT INTO global_sequence (seq, event_name, created_at) VALUES (1, 'attempt', 1);
+		INSERT INTO question_instance (id, session_id, ordinal, question_version_id, snapshot_json, created_at)
+		VALUES ('inst_inv_1', 'sess_inv_1', 0, 'qv_b', '{"options":[{"id":"opt_correct","option_identity_id":"ident_corr","is_correct":true},{"id":"opt_wrong","option_identity_id":"ident_dist","is_correct":false}],"correct_option_id":"opt_correct"}', 1000);
+	`)
+	if err != nil {
+		t.Fatalf("seed fixtures: %v", err)
+	}
+
+	policy, err := learning.LoadFSRSPolicyFromPath("../../config/policy-v2.json")
+	if err != nil {
+		t.Fatalf("load policy: %v", err)
+	}
+
+	service := learning.NewLearningService(db, *policy, "observation-v2", "v1")
+
+	// Perform an attempt
+	selectedOpt := "opt_wrong"
+	attempt := &learning.AttemptEvent{
+		ID:               "att_inv_1",
+		InstanceID:       "inst_inv_1",
+		SessionID:        "sess_inv_1",
+		SenseID:          "sense_bank",
+		TaskFamily:       learning.TaskMeaningRecognition,
+		Source:           learning.SourcePractice,
+		Purpose:          learning.PurposeNormal,
+		ResponseHistory:  learning.ResponseSingleResponse,
+		SelectedOptionID: &selectedOpt,
+		FinalOptionID:    &selectedOpt,
+		IsCorrect:        false,
+		ObservedAt:       1000,
+		EventSequence:    1,
+		CreatedAt:        1000,
+	}
+
+	options := []learning.InstanceOption{
+		{ID: "opt_correct", IsCorrect: true, OptionIdentityID: "ident_corr"},
+		{ID: "opt_wrong", IsCorrect: false, OptionIdentityID: "ident_dist"},
+	}
+
+	err = core.RunInTx(ctx, db, func(tc *core.TxnContext) error {
+		_, err := service.ApplyAttempt(tc, attempt, options)
+		return err
+	})
+	if err != nil {
+		t.Fatalf("apply attempt: %v", err)
+	}
+
+	// Add event_revision with invalidate
+	_, err = db.Exec(`
+		INSERT INTO event_revision (id, event_id, event_type, revision_kind, reason, created_at)
+		VALUES ('rev_1', 'att_inv_1', 'attempt_event', 'invalidate', 'test invalidation', 2000)
+	`)
+	if err != nil {
+		t.Fatalf("insert event_revision: %v", err)
+	}
+
+	// Replay projections to v2
+	if err := service.ReplayProjections(ctx, "v2", 0); err != nil {
+		t.Fatalf("replay to v2: %v", err)
+	}
+
+	var ord, norm, conf int
+	if err := db.QueryRow("SELECT coalesce(sum(ordinary_samples),0), coalesce(sum(normal_samples),0) FROM evidence_projection WHERE projection_version = 'v2'").Scan(&ord, &norm); err != nil {
+		t.Fatalf("query evidence: %v", err)
+	}
+	if err := db.QueryRow("SELECT count(*) FROM confusion_projection WHERE projection_version = 'v2'").Scan(&conf); err != nil {
+		t.Fatalf("query confusion: %v", err)
+	}
+
+	if ord != 0 || norm != 0 || conf != 0 {
+		t.Fatalf("expected ord=0, norm=0, conf=0 for invalidated event replay, got ord=%d, norm=%d, conf=%d", ord, norm, conf)
+	}
+}

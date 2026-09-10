@@ -55,10 +55,12 @@ class GenerationWorkflow:
         go_client: GoGenerationClient,
         provider_client: ProviderClient,
         config: WorkerConfig,
-        checkpointer: SqliteSaver
+        checkpointer: SqliteSaver,
+        evaluator_client: Optional[ProviderClient] = None
     ):
         self.go_client = go_client
         self.provider_client = provider_client
+        self.evaluator_client = evaluator_client or provider_client
         self.config = config
         self.checkpointer = checkpointer
         self.graph = self._build_graph()
@@ -289,7 +291,7 @@ class GenerationWorkflow:
         for eval_idx, res_id in enumerate(res_ids[:2]):
             messages = build_evaluator_prompt(fixed_input, candidate_content, eval_idx)
             try:
-                call_res = self.provider_client.call_chat_completion(
+                call_res = self.evaluator_client.call_chat_completion(
                     messages=messages,
                     model=self.config.evaluator_cfg.get("model"),
                     max_tokens=self.config.evaluator_cfg.get("max_output_tokens", 256)
@@ -376,11 +378,27 @@ class GenerationWorkflow:
         else:
             verdict = "uncertain"
 
+        options = candidate_content.get("options", [])
+        single_correct = sum(1 for o in options if o.get("is_correct")) == 1
+        stem_raw = candidate_content.get("stem")
+        stem_valid = bool(stem_raw and isinstance(stem_raw, str) and stem_raw.strip())
+        options_count_valid = len(options) == 4
+
+        rule_checks_pass = single_correct and stem_valid and options_count_valid
+        if not rule_checks_pass:
+            verdict = "reject"
+            if not single_correct:
+                reasons.append("Rule check failed: question must have exactly one correct option")
+            if not stem_valid:
+                reasons.append("Rule check failed: question stem cannot be empty")
+            if not options_count_valid:
+                reasons.append(f"Rule check failed: question must have 4 options, got {len(options)}")
+
         checks = {
             "rule_checks": {
-                "options_count": len(candidate_content.get("options", [])),
-                "single_correct": sum(1 for o in candidate_content.get("options", []) if o.get("is_correct")) == 1,
-                "stem_valid": bool(candidate_content.get("stem"))
+                "options_count": len(options),
+                "single_correct": single_correct,
+                "stem_valid": stem_valid
             },
             "semantic_evaluations": evaluations,
             "result": verdict

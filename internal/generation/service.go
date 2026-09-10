@@ -641,10 +641,10 @@ func (s *Service) SettleCall(ctx context.Context, reservationID string, req Sett
 			return ErrInvalidInputDigest
 		}
 
-		// 2. Check if already settled or unknown with existing digest
-		if existingDigest.Valid && existingDigest.String != "" {
-			if existingDigest.String == computedDigest {
-				// Idempotent replay
+		// 2. Check current status and existing digest
+		if status == "settled" {
+			if existingDigest.Valid && existingDigest.String == computedDigest {
+				// Idempotent replay of settled call
 				var authReqs, totToks, overrun int
 				_ = tc.QueryRow("SELECT authorized_requests, total_tokens, budget_overrun FROM generation_budget_ledger WHERE job_id = ?", jobID).
 					Scan(&authReqs, &totToks, &overrun)
@@ -662,8 +662,30 @@ func (s *Service) SettleCall(ctx context.Context, reservationID string, req Sett
 			return ErrCallSettlementConflict
 		}
 
+		if status == "unknown" && req.Outcome == "unknown" {
+			if existingDigest.Valid && existingDigest.String == computedDigest {
+				// Idempotent replay of unknown outcome
+				var authReqs, totToks, overrun int
+				_ = tc.QueryRow("SELECT authorized_requests, total_tokens, budget_overrun FROM generation_budget_ledger WHERE job_id = ?", jobID).
+					Scan(&authReqs, &totToks, &overrun)
+				resp = &SettleResponse{
+					CallStatus:      status,
+					AccountedTokens: accountedTokens,
+					JobBudgetStatus: JobBudgetStatus{
+						AuthorizedRequests: authReqs,
+						TotalTokens:        totToks,
+						BudgetOverrun:      overrun == 1,
+					},
+				}
+				return nil
+			}
+		}
+
 		// 3. Calculate accounted tokens and adjust ledger
-		newAccountedTokens := reservedTokens
+		newAccountedTokens := accountedTokens
+		if newAccountedTokens <= 0 {
+			newAccountedTokens = reservedTokens
+		}
 		newCallStatus := "settled"
 		if req.Outcome == "unknown" {
 			newCallStatus = "unknown"
@@ -676,7 +698,7 @@ func (s *Service) SettleCall(ctx context.Context, reservationID string, req Sett
 			actualTokens := req.Usage.InputTokens + req.Usage.OutputTokens
 			newAccountedTokens = actualTokens
 
-			tokenDelta := actualTokens - reservedTokens
+			tokenDelta := actualTokens - accountedTokens
 
 			// Query ledger
 			var maxToks, totToks, authReqs, overrun int
@@ -858,6 +880,38 @@ func (s *Service) SubmitCandidate(ctx context.Context, req SubmitCandidateReques
 			}
 		}
 
+		if req.Checks.RuleChecks != nil {
+			for _, v := range req.Checks.RuleChecks {
+				if b, ok := v.(bool); ok && !b {
+					allPass = false
+				}
+			}
+		}
+
+		// Enforce structural rules
+		if strings.TrimSpace(req.Content.Stem) == "" {
+			allPass = false
+		}
+		if len(req.Content.Options) != 4 {
+			allPass = false
+		}
+		correctCount := 0
+		optIDs := make(map[string]bool)
+		for _, o := range req.Content.Options {
+			if o.ID != "" {
+				if optIDs[o.ID] {
+					allPass = false
+				}
+				optIDs[o.ID] = true
+			}
+			if o.IsCorrect {
+				correctCount++
+			}
+		}
+		if correctCount != 1 {
+			allPass = false
+		}
+
 		// Check maintenance mode
 		var maintMode string
 		_ = tc.QueryRow("SELECT mode FROM projection_control WHERE id = 1").Scan(&maintMode)
@@ -926,9 +980,14 @@ func (s *Service) SubmitCandidate(ctx context.Context, req SubmitCandidateReques
 					return fmt.Errorf("register option identity: %w", err)
 				}
 
+				var actualIdentityID string
+				if err := tc.QueryRow("SELECT id FROM option_identity WHERE canonical_key = ?", canonicalKey).Scan(&actualIdentityID); err != nil {
+					return fmt.Errorf("lookup registered option identity: %w", err)
+				}
+
 				processedOpts = append(processedOpts, optInfo{
 					id:           optID,
-					identityID:   identityID,
+					identityID:   actualIdentityID,
 					canonicalKey: canonicalKey,
 					text:         o.Text,
 					isCorrect:    o.IsCorrect,

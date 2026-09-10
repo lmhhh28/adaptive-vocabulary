@@ -138,24 +138,26 @@ func (s *Service) CreateBackup(ctx context.Context, dataDir, outputDir string, i
 		if _, err := os.Stat(chkPath); err == nil {
 			tempChk := filepath.Join(tempDir, "langgraph-checkpoints.db")
 			chkDB, err := sql.Open("sqlite", fmt.Sprintf("%s?_pragma=busy_timeout(5000)", chkPath))
-			if err == nil {
-				escapedChk := strings.ReplaceAll(tempChk, "'", "''")
-				if _, err := chkDB.ExecContext(ctx, fmt.Sprintf("VACUUM INTO '%s'", escapedChk)); err != nil {
-					_ = copyFile(chkPath, tempChk)
-				}
+			if err != nil {
+				return nil, fmt.Errorf("open checkpoint db: %w", err)
+			}
+			escapedChk := strings.ReplaceAll(tempChk, "'", "''")
+			if _, err := chkDB.ExecContext(ctx, fmt.Sprintf("VACUUM INTO '%s'", escapedChk)); err != nil {
 				chkDB.Close()
-			} else {
-				_ = copyFile(chkPath, tempChk)
+				return nil, fmt.Errorf("snapshot checkpoint db: %w", err)
 			}
+			chkDB.Close()
 
-			if chkBytes, chkHash, err := computeFileHash(tempChk); err == nil {
-				files = append(files, BackupFileInfo{
-					RelativePath: "langgraph-checkpoints.db",
-					Role:         "checkpoint",
-					Bytes:        chkBytes,
-					SHA256:       chkHash,
-				})
+			chkBytes, chkHash, err := computeFileHash(tempChk)
+			if err != nil {
+				return nil, fmt.Errorf("hash checkpoint db: %w", err)
 			}
+			files = append(files, BackupFileInfo{
+				RelativePath: "langgraph-checkpoints.db",
+				Role:         "checkpoint",
+				Bytes:        chkBytes,
+				SHA256:       chkHash,
+			})
 		}
 	}
 

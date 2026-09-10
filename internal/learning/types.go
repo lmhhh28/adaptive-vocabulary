@@ -229,10 +229,11 @@ type InstanceOption struct {
 
 // EligibilityDecision captures how an attempt is classified under policy-v2
 type EligibilityDecision struct {
-	OrdinaryEvidence   bool
-	OrdinaryConfusion  bool
+	IsValid             bool
+	OrdinaryEvidence    bool
+	OrdinaryConfusion   bool
 	UpdateConsolidation bool
-	NormalGap          bool
-	CorrectionGap      bool
-	FSRSReview         bool
+	NormalGap           bool
+	CorrectionGap       bool
+	FSRSReview          bool
 }

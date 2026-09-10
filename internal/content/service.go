@@ -128,7 +128,7 @@ func (s *QuestionService) CreateQuestionVersion(ctx context.Context, q *Question
 	err := core.RunInTx(ctx, s.db, func(tc *core.TxnContext) error {
 		// 1. Gather or compute option identities and canonical keys
 		var optionKeys []string
-		for _, o := range q.Options {
+		for i, o := range q.Options {
 			var sourceID, sourceVersion string
 			// Look up source from sense
 			_ = tc.QueryRow(`
@@ -154,6 +154,11 @@ func (s *QuestionService) CreateQuestionVersion(ctx context.Context, q *Question
 			if err != nil {
 				return fmt.Errorf("register option identity: %w", err)
 			}
+			var actualIdentityID string
+			if err := tc.QueryRow("SELECT id FROM option_identity WHERE canonical_key = ?", canonicalKey).Scan(&actualIdentityID); err != nil {
+				return fmt.Errorf("lookup registered option identity: %w", err)
+			}
+			q.Options[i].OptionIdentityID = actualIdentityID
 		}
 
 		// 2. Compute form deduplication hash

@@ -5,6 +5,7 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+  workflow_dispatch:
 
 concurrency:
   group: ci-${{ github.ref }}
@@ -21,14 +22,16 @@ jobs:
         run: make check
 
   test:
-    name: Test (Go unit tests)
+    name: Test (Go & Worker unit tests)
     needs: check
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-toolchain
-      - name: Run tests
-        run: make test
+      - name: Run Go tests
+        run: make test-go
+      - name: Run Worker tests
+        run: make test-worker
 
   build:
     name: Build

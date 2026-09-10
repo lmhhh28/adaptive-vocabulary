@@ -343,3 +343,22 @@ func TestRestoreMaintenanceStatePreserved(t *testing.T) {
 		t.Errorf("expected requires_rebuild 1, got %d", reqReb)
 	}
 }
+
+func TestBackupCheckpointFailureReturnsError(t *testing.T) {
+	ctx := context.Background()
+	srcDir := setupTestDB(t)
+	backupDir := filepath.Join(t.TempDir(), "checkpoint_fail_backup")
+
+	// Create a corrupted langgraph-checkpoints.db in srcDir
+	corruptChkPath := filepath.Join(srcDir, "langgraph-checkpoints.db")
+	if err := os.WriteFile(corruptChkPath, []byte("this is not a valid sqlite database"), 0600); err != nil {
+		t.Fatalf("write corrupt checkpoint: %v", err)
+	}
+
+	svc := backup.NewService()
+	_, err := svc.CreateBackup(ctx, srcDir, backupDir, true)
+	if err == nil {
+		t.Fatalf("expected CreateBackup to fail when checkpoint database is corrupt, got nil")
+	}
+}
+

@@ -4,7 +4,10 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"net/http"
+	"net/http/httptest"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -316,5 +319,114 @@ func TestExamExpiredDeadlineSettle(t *testing.T) {
 	}
 	if detail.Status != "submitted" {
 		t.Errorf("expected status=submitted, got %s", detail.Status)
+	}
+}
+
+func TestAbandonExamBodyValidation(t *testing.T) {
+	db, _ := setupTestDB(t, "core")
+
+	policyPath := filepath.Join("..", "..", "config", "policy-v2.json")
+	handler, err := exam.NewHandler(db, policyPath)
+	if err != nil {
+		t.Fatalf("new handler: %v", err)
+	}
+
+	ctx := context.Background()
+	mux := http.NewServeMux()
+	handler.RegisterRoutes(mux)
+
+	bankID := "00000000-0000-4000-8000-000000000801"
+
+	// Create exam
+	createResp, _, err := handler.Service().CreateExam(ctx, exam.CreateExamRequest{
+		BankID:        bankID,
+		QuestionCount: 2,
+	}, "", "")
+	if err != nil {
+		t.Fatalf("create exam: %v", err)
+	}
+	examID := createResp.ExamID
+
+	// Test invalid request bodies
+	invalidBodies := []string{"", "{", "{}"}
+	for _, body := range invalidBodies {
+		w := httptest.NewRecorder()
+		r := httptest.NewRequest("POST", "/api/v1/exams/"+examID+"/abandon", strings.NewReader(body))
+		mux.ServeHTTP(w, r)
+		if w.Code != http.StatusBadRequest {
+			t.Errorf("expected 400 for body %q, got %d", body, w.Code)
+		}
+
+		// Ensure session is still open
+		var status string
+		if err := db.QueryRow("SELECT status FROM session WHERE id = ?", examID).Scan(&status); err != nil {
+			t.Fatalf("query status: %v", err)
+		}
+		if status != "open" {
+			t.Errorf("expected session to remain open for body %q, got %s", body, status)
+		}
+	}
+
+	// Test valid body with expected_revision=0
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest("POST", "/api/v1/exams/"+examID+"/abandon", strings.NewReader(`{"expected_revision": 0}`))
+	mux.ServeHTTP(w, r)
+	if w.Code != http.StatusOK {
+		t.Errorf("expected 200 for valid abandon, got %d", w.Code)
+	}
+	var status string
+	if err := db.QueryRow("SELECT status FROM session WHERE id = ?", examID).Scan(&status); err != nil {
+		t.Fatalf("query status: %v", err)
+	}
+	if status != "abandoned" {
+		t.Errorf("expected session to be abandoned, got %s", status)
+	}
+}
+
+func TestRecordTelemetryGapIdempotentReplayAfterClosure(t *testing.T) {
+	_, svc := setupTestDB(t, "core")
+
+	ctx := context.Background()
+	bankID := "00000000-0000-4000-8000-000000000801"
+
+	// Create exam
+	createResp, _, err := svc.CreateExam(ctx, exam.CreateExamRequest{
+		BankID:        bankID,
+		QuestionCount: 2,
+	}, "", "")
+	if err != nil {
+		t.Fatalf("create exam: %v", err)
+	}
+	examID := createResp.ExamID
+
+	// Record telemetry gap with idempotency
+	key := "gap-key-1"
+	digest := "gap-digest-1"
+	gapResp, err := svc.RecordTelemetryGap(ctx, examID, exam.TelemetryGapsRequest{
+		ExpectedRevision: 0,
+		Reason:           "lost_queue",
+	}, key, digest)
+	if err != nil {
+		t.Fatalf("record telemetry gap: %v", err)
+	}
+
+	// Abandon the exam
+	_, err = svc.AbandonExam(ctx, examID, exam.AbandonExamRequest{
+		ExpectedRevision: gapResp.CurrentRevision,
+	})
+	if err != nil {
+		t.Fatalf("abandon exam: %v", err)
+	}
+
+	// Replay the same telemetry gap after closure
+	replayedGap, err := svc.RecordTelemetryGap(ctx, examID, exam.TelemetryGapsRequest{
+		ExpectedRevision: 0,
+		Reason:           "lost_queue",
+	}, key, digest)
+	if err != nil {
+		t.Fatalf("expected idempotent replay to succeed after closure, got: %v", err)
+	}
+	if replayedGap.CurrentRevision != gapResp.CurrentRevision {
+		t.Errorf("expected current revision %d, got %d", gapResp.CurrentRevision, replayedGap.CurrentRevision)
 	}
 }

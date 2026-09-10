@@ -442,6 +442,8 @@ func (h *Handler) writeError(w http.ResponseWriter, r *http.Request, err error) 
 		core.WriteJSONError(w, r, http.StatusNotFound, "NOT_FOUND", err.Error(), nil)
 	case errors.Is(err, ErrRevisionConflict):
 		core.WriteJSONError(w, r, http.StatusConflict, "REVISION_CONFLICT", err.Error(), nil)
+	case errors.Is(err, ErrInvalidItemStatus):
+		core.WriteJSONError(w, r, http.StatusConflict, "INVALID_STATE", err.Error(), nil)
 	case errors.Is(err, ErrIdempotencyConflict):
 		core.WriteJSONError(w, r, http.StatusConflict, "IDEMPOTENCY_CONFLICT", err.Error(), nil)
 	case errors.Is(err, ErrSourceConflict):

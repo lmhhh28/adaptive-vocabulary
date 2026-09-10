@@ -317,3 +317,143 @@ func TestParseConstraints(t *testing.T) {
 		t.Fatalf("expected ErrTooManyRows, got %v", err)
 	}
 }
+
+func TestBankSenseInsertErrorPropagated(t *testing.T) {
+	db := setupTestDB(t)
+	defer db.Close()
+
+	ctx := context.Background()
+	bankSvc := bank.NewService(db)
+	newBank, err := bankSvc.CreateBank(ctx, "Trigger Bank", "")
+	if err != nil {
+		t.Fatalf("create bank: %v", err)
+	}
+
+	importerSvc := NewService(db)
+	parsed, err := ParseWordSlice([]string{"river"})
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+
+	// Add abort trigger on bank_sense to simulate insert failure
+	_, err = db.Exec(`CREATE TRIGGER fail_bank_sense BEFORE INSERT ON bank_sense BEGIN SELECT RAISE(ABORT, 'injected bank_sense insert error'); END;`)
+	if err != nil {
+		t.Fatalf("create trigger: %v", err)
+	}
+
+	_, err = importerSvc.ImportBankVocabulary(ctx, newBank.ID, parsed, "v1", -1, "", "")
+	if err == nil {
+		t.Fatalf("expected error from failed bank_sense insert, got nil")
+	}
+
+	// Ensure no job was recorded or committed
+	var jobCount int
+	_ = db.QueryRow("SELECT COUNT(*) FROM import_job WHERE bank_id = ?", newBank.ID).Scan(&jobCount)
+	if jobCount != 0 {
+		t.Fatalf("expected 0 jobs after rollback, got %d", jobCount)
+	}
+}
+
+func TestResolveItemRejectsFinalizedStatus(t *testing.T) {
+	db := setupTestDB(t)
+	defer db.Close()
+
+	ctx := context.Background()
+	bankSvc := bank.NewService(db)
+	newBank, err := bankSvc.CreateBank(ctx, "Conflict Bank", "")
+	if err != nil {
+		t.Fatalf("create bank: %v", err)
+	}
+
+	importerSvc := NewService(db)
+	parsed, err := ParseWordSlice([]string{"bank"})
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+
+	job, err := importerSvc.ImportBankVocabulary(ctx, newBank.ID, parsed, "v1", -1, "", "")
+	if err != nil {
+		t.Fatalf("import: %v", err)
+	}
+
+	itemsResp, err := importerSvc.GetImportItems(ctx, job.ID, "ambiguous", 10, 0)
+	if err != nil || len(itemsResp.Items) != 1 {
+		t.Fatalf("expected 1 ambiguous item, got %d, err: %v", len(itemsResp.Items), err)
+	}
+	item := itemsResp.Items[0]
+	s1 := item.Candidates[0].SenseID
+
+	// Adopt s1 -> becomes resolved
+	updated, err := importerSvc.ResolveImportItem(ctx, item.ID, ResolveItemRequest{
+		Action:           "adopt",
+		SenseRefs:        []string{s1},
+		Reason:           "Adopt first sense",
+		ExpectedRevision: item.Revision,
+	}, "", "")
+	if err != nil {
+		t.Fatalf("resolve adopt error: %v", err)
+	}
+	if updated.Status != "resolved" {
+		t.Fatalf("expected resolved, got %s", updated.Status)
+	}
+
+	// Attempt to exclude already resolved item -> must fail with ErrInvalidItemStatus
+	_, err = importerSvc.ResolveImportItem(ctx, item.ID, ResolveItemRequest{
+		Action:           "exclude",
+		Reason:           "Exclude after resolve",
+		ExpectedRevision: updated.Revision,
+	}, "", "")
+	if !errors.Is(err, ErrInvalidItemStatus) {
+		t.Fatalf("expected ErrInvalidItemStatus, got %v", err)
+	}
+}
+
+func TestMultiVersionSenseDoesNotDuplicateCandidates(t *testing.T) {
+	db := setupTestDB(t)
+	defer db.Close()
+
+	ctx := context.Background()
+	// Find sense ID for river
+	var riverSenseID string
+	err := db.QueryRow(`
+		SELECT s.id FROM sense s
+		JOIN lexeme l ON l.id = s.lexeme_id
+		WHERE l.canonical_form = 'river'
+	`).Scan(&riverSenseID)
+	if err != nil {
+		t.Fatalf("query river sense: %v", err)
+	}
+
+	// Insert a version 2 for river sense
+	now := int64(1700000000000)
+	_, err = db.Exec(`
+		INSERT INTO sense_version (id, sense_id, version_number, meaning, created_at)
+		VALUES ('ver-river-2', ?, 2, 'A large natural stream of water (v2)', ?)
+	`, riverSenseID, now)
+	if err != nil {
+		t.Fatalf("insert sense_version v2: %v", err)
+	}
+
+	bankSvc := bank.NewService(db)
+	newBank, err := bankSvc.CreateBank(ctx, "Multi-version Bank", "")
+	if err != nil {
+		t.Fatalf("create bank: %v", err)
+	}
+
+	importerSvc := NewService(db)
+	parsed, err := ParseWordSlice([]string{"river"})
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+
+	job, err := importerSvc.ImportBankVocabulary(ctx, newBank.ID, parsed, "v1", -1, "", "")
+	if err != nil {
+		t.Fatalf("import river: %v", err)
+	}
+
+	// Because of single sense with multiple versions, it should NOT be ambiguous
+	if job.ResolvedCount != 1 || job.AmbiguousCount != 0 {
+		t.Fatalf("expected 1 resolved and 0 ambiguous, got %d resolved, %d ambiguous", job.ResolvedCount, job.AmbiguousCount)
+	}
+}
+
