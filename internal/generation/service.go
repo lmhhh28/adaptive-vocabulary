@@ -363,7 +363,9 @@ func (s *Service) ClaimItems(ctx context.Context, req ClaimRequest, nowMicro int
 			_, _ = tc.Exec(`UPDATE generation_job SET status = 'processing', updated_at = ? WHERE id = ? AND status = 'pending'`, nowMicro, c.jobID)
 
 			var fixedInput FixedItemInput
-			_ = json.Unmarshal([]byte(c.fixedInputJSON), &fixedInput)
+			if err := json.Unmarshal([]byte(c.fixedInputJSON), &fixedInput); err != nil {
+				return fmt.Errorf("unmarshal fixed input for item %s: %w", c.id, err)
+			}
 
 			resp.Items = append(resp.Items, ClaimedItem{
 				ItemID:        c.id,

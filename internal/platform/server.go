@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"sync"
 	"syscall"
 	"time"
 
@@ -21,6 +22,14 @@ import (
 	"adaptive-vocabulary/internal/revision"
 )
 
+const (
+	DefaultMaxBodyBytes    = 2 * 1024 * 1024
+	DefaultReadTimeout     = 15 * time.Second
+	DefaultWriteTimeout    = 15 * time.Second
+	DefaultIdleTimeout     = 60 * time.Second
+	DefaultShutdownTimeout = 5 * time.Second
+)
+
 type Server struct {
 	Config        *Config
 	DB            *DB
@@ -31,6 +40,7 @@ type Server struct {
 	BaseURL       string
 	Listener      net.Listener
 	HTTPServer    *http.Server
+	closeOnce     sync.Once
 }
 
 func NewServer(cfg *Config) (*Server, error) {
@@ -64,7 +74,12 @@ func NewServer(cfg *Config) (*Server, error) {
 		}
 	}
 
-	security := NewSecurityConfig(cfg.WorkerToken)
+	security, err := LoadOrGenerateSecurityConfig(cfg.DataDir, cfg.WorkerToken)
+	if err != nil {
+		_ = db.Close()
+		_ = lock.Release()
+		return nil, fmt.Errorf("init security config: %w", err)
+	}
 
 	examHandler, err := exam.NewHandler(db.DB, cfg.PolicyPath)
 	if err != nil {
@@ -94,8 +109,7 @@ func (s *Server) Start() error {
 	// Listen on configured address
 	listener, err := net.Listen("tcp", s.Config.ListenAddr)
 	if err != nil {
-		_ = s.DB.Close()
-		_ = s.Lock.Release()
+		_ = s.Close()
 		return fmt.Errorf("listen on %s: %w", s.Config.ListenAddr, err)
 	}
 	s.Listener = listener
@@ -133,9 +147,7 @@ func (s *Server) Start() error {
 	// Practice routes
 	practiceHandler, err := practice.NewHandler(s.DB.DB, s.Config.PolicyPath)
 	if err != nil {
-		_ = listener.Close()
-		_ = s.DB.Close()
-		_ = s.Lock.Release()
+		_ = s.Close()
 		return fmt.Errorf("init practice handler: %w", err)
 	}
 	practiceHandler.RegisterRoutes(mux)
@@ -168,15 +180,15 @@ func (s *Server) Start() error {
 	handler = CSRFMiddleware(s.Security)(handler)
 	handler = OriginCheckMiddleware(handler)
 	handler = HostCheckMiddleware(handler)
-	handler = MaxBytesMiddleware(2 * 1024 * 1024)(handler)
+	handler = MaxBytesMiddleware(DefaultMaxBodyBytes)(handler)
 	handler = CacheControlMiddleware(handler)
 	handler = RequestIDMiddleware(handler)
 
 	s.HTTPServer = &http.Server{
 		Handler:      handler,
-		ReadTimeout:  15 * time.Second,
-		WriteTimeout: 15 * time.Second,
-		IdleTimeout:  60 * time.Second,
+		ReadTimeout:  DefaultReadTimeout,
+		WriteTimeout: DefaultWriteTimeout,
+		IdleTimeout:  DefaultIdleTimeout,
 	}
 
 	// Print single-line ready JSON to stdout
@@ -193,9 +205,7 @@ func (s *Server) Start() error {
 		DataDir: s.Config.DataDir,
 	}
 	if err := PrintReadySignal(readySig); err != nil {
-		_ = listener.Close()
-		_ = s.DB.Close()
-		_ = s.Lock.Release()
+		_ = s.Close()
 		return err
 	}
 
@@ -213,40 +223,42 @@ func (s *Server) Start() error {
 	select {
 	case sig := <-stopCh:
 		_ = sig
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
-		_ = s.HTTPServer.Shutdown(ctx)
-		_ = s.DB.Close()
-		_ = s.Lock.Release()
-		return nil
+		return s.Close()
 	case err := <-serverErrCh:
-		_ = s.DB.Close()
-		_ = s.Lock.Release()
+		_ = s.Close()
 		return err
 	}
 }
 
 func (s *Server) Close() error {
-	var errs []error
-	if s.HTTPServer != nil {
-		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-		defer cancel()
-		if err := s.HTTPServer.Shutdown(ctx); err != nil {
-			errs = append(errs, err)
+	var closeErr error
+	s.closeOnce.Do(func() {
+		var errs []error
+		if s.Listener != nil {
+			if err := s.Listener.Close(); err != nil && !errors.Is(err, net.ErrClosed) {
+				errs = append(errs, err)
+			}
 		}
-	}
-	if s.DB != nil {
-		if err := s.DB.Close(); err != nil {
-			errs = append(errs, err)
+		if s.HTTPServer != nil {
+			ctx, cancel := context.WithTimeout(context.Background(), DefaultShutdownTimeout)
+			defer cancel()
+			if err := s.HTTPServer.Shutdown(ctx); err != nil && !errors.Is(err, http.ErrServerClosed) {
+				errs = append(errs, err)
+			}
 		}
-	}
-	if s.Lock != nil {
-		if err := s.Lock.Release(); err != nil {
-			errs = append(errs, err)
+		if s.DB != nil {
+			if err := s.DB.Close(); err != nil {
+				errs = append(errs, err)
+			}
 		}
-	}
-	if len(errs) > 0 {
-		return fmt.Errorf("close server errors: %v", errs)
-	}
-	return nil
+		if s.Lock != nil {
+			if err := s.Lock.Release(); err != nil {
+				errs = append(errs, err)
+			}
+		}
+		if len(errs) > 0 {
+			closeErr = fmt.Errorf("close server errors: %v", errs)
+		}
+	})
+	return closeErr
 }

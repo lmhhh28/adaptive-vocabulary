@@ -362,3 +362,36 @@ func TestBackupCheckpointFailureReturnsError(t *testing.T) {
 	}
 }
 
+func TestCopyFileErrorHandling(t *testing.T) {
+	tmpDir := t.TempDir()
+	srcFile := filepath.Join(tmpDir, "source.txt")
+	dstFile := filepath.Join(tmpDir, "dest.txt")
+
+	if err := os.WriteFile(srcFile, []byte("hello backup"), 0600); err != nil {
+		t.Fatalf("write source file: %v", err)
+	}
+
+	// 1. Non-existent source
+	svc := backup.NewService()
+	_ = svc
+	if err := backup.CopyFileForTest(filepath.Join(tmpDir, "non_existent.txt"), dstFile); err == nil {
+		t.Errorf("expected error copying from non-existent source, got nil")
+	}
+
+	// 2. Unwritable destination directory
+	badDst := filepath.Join(tmpDir, "no_such_dir", "dest.txt")
+	if err := backup.CopyFileForTest(srcFile, badDst); err == nil {
+		t.Errorf("expected error copying to unwritable destination, got nil")
+	}
+
+	// 3. Successful copy
+	if err := backup.CopyFileForTest(srcFile, dstFile); err != nil {
+		t.Fatalf("copyFile failed: %v", err)
+	}
+	content, err := os.ReadFile(dstFile)
+	if err != nil || string(content) != "hello backup" {
+		t.Errorf("copied content mismatch: got %q, err=%v", string(content), err)
+	}
+}
+
+

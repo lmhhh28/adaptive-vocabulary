@@ -44,3 +44,12 @@ jobs:
         run: make build
       - name: Build E2E binary
         run: make build-e2e
+      - name: Upload binaries
+        uses: actions/upload-artifact@v4
+        with:
+          name: avocab-binaries
+          path: |
+            bin/avocab
+            bin/avocab-e2e
+          retention-days: 7
+

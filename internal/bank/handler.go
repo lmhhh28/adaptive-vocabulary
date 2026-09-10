@@ -607,38 +607,20 @@ func (h *Handler) removeBankMembersJSON(w http.ResponseWriter, r *http.Request, 
 		return
 	}
 
-	var rawMap map[string]any
-	if err := json.Unmarshal(bodyBytes, &rawMap); err != nil {
+	var req struct {
+		ExpectedRevision *int64   `json:"expected_revision"`
+		SenseIDs         []string `json:"sense_ids"`
+	}
+	if err := json.Unmarshal(bodyBytes, &req); err != nil {
 		core.WriteJSONError(w, r, http.StatusBadRequest, "INVALID_REQUEST", "Invalid JSON payload", nil)
 		return
 	}
-
-	// expected_revision is required
-	expRevRaw, hasExpRev := rawMap["expected_revision"]
-	if !hasExpRev {
+	if req.ExpectedRevision == nil {
 		core.WriteJSONError(w, r, 428, "PRECONDITION_REQUIRED", "expected_revision is required", nil)
 		return
 	}
-	expRevNum, ok := expRevRaw.(json.Number)
-	var expectedRevision int64
-	if ok {
-		n, err := expRevNum.Int64()
-		if err != nil {
-			core.WriteJSONError(w, r, http.StatusBadRequest, "INVALID_REQUEST", "Invalid expected_revision", nil)
-			return
-		}
-		expectedRevision = n
-	} else if f, ok := expRevRaw.(float64); ok {
-		expectedRevision = int64(f)
-	} else {
-		core.WriteJSONError(w, r, http.StatusBadRequest, "INVALID_REQUEST", "Invalid expected_revision type", nil)
-		return
-	}
+	expectedRevision := *req.ExpectedRevision
 
-	var req struct {
-		SenseIDs []string `json:"sense_ids"`
-	}
-	_ = json.Unmarshal(bodyBytes, &req)
 	if len(req.SenseIDs) < 1 || len(req.SenseIDs) > 1000 {
 		core.WriteJSONError(w, r, http.StatusBadRequest, "INVALID_REQUEST", "sense_ids must contain 1 to 1000 items", nil)
 		return
@@ -747,31 +729,18 @@ func (h *Handler) archiveBankJSON(w http.ResponseWriter, r *http.Request, bankID
 		return
 	}
 
-	var rawMap map[string]any
-	if err := json.Unmarshal(bodyBytes, &rawMap); err != nil {
+	var req struct {
+		ExpectedRevision *int64 `json:"expected_revision"`
+	}
+	if err := json.Unmarshal(bodyBytes, &req); err != nil {
 		core.WriteJSONError(w, r, http.StatusBadRequest, "INVALID_REQUEST", "Invalid JSON payload", nil)
 		return
 	}
-
-	expRevRaw, hasExpRev := rawMap["expected_revision"]
-	if !hasExpRev {
+	if req.ExpectedRevision == nil {
 		core.WriteJSONError(w, r, 428, "PRECONDITION_REQUIRED", "expected_revision is required", nil)
 		return
 	}
-	var expectedRevision int64
-	if num, ok := expRevRaw.(json.Number); ok {
-		n, err := num.Int64()
-		if err != nil {
-			core.WriteJSONError(w, r, http.StatusBadRequest, "INVALID_REQUEST", "Invalid expected_revision", nil)
-			return
-		}
-		expectedRevision = n
-	} else if f, ok := expRevRaw.(float64); ok {
-		expectedRevision = int64(f)
-	} else {
-		core.WriteJSONError(w, r, http.StatusBadRequest, "INVALID_REQUEST", "Invalid expected_revision type", nil)
-		return
-	}
+	expectedRevision := *req.ExpectedRevision
 
 	resourceScope := fmt.Sprintf("/api/v1/banks/%s/archive", bankID)
 	var respBody string

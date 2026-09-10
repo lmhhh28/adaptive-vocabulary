@@ -8,6 +8,11 @@ type Clock interface {
 	NowMicro() int64
 }
 
+// NowMicro returns the current UTC time in microseconds consistently.
+func NowMicro() int64 {
+	return time.Now().UTC().UnixMicro()
+}
+
 // RealClock implements Clock using real system time.
 type RealClock struct{}
 
@@ -20,5 +25,5 @@ func (c *RealClock) Now() time.Time {
 }
 
 func (c *RealClock) NowMicro() int64 {
-	return time.Now().UTC().UnixNano() / 1000
+	return NowMicro()
 }

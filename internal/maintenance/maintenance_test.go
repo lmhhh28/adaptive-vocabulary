@@ -156,3 +156,17 @@ func TestRebuild_EvidenceRevision_Abort_And_Restart(t *testing.T) {
 		t.Errorf("expected error for conflicting restart, got nil")
 	}
 }
+
+func TestRebuildAbortInvalidRunID(t *testing.T) {
+	_, svc, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	ctx := context.Background()
+
+	// Aborting non-existent run ID should return error
+	_, err := svc.Abort(ctx, "non-existent-run-id")
+	if err == nil {
+		t.Errorf("expected error aborting non-existent run ID, got nil")
+	}
+}
+

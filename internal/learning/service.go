@@ -4,7 +4,6 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
-	"time"
 
 	"adaptive-vocabulary/internal/core"
 )
@@ -38,7 +37,7 @@ func (s *LearningService) ApplyAttempt(tc *core.TxnContext, attempt *AttemptEven
 		attempt.ID = core.NewUUID()
 	}
 	if attempt.CreatedAt == 0 {
-		attempt.CreatedAt = time.Now().UTC().UnixNano() / 1000
+		attempt.CreatedAt = core.NowMicro()
 	}
 	if attempt.ObservedAt == 0 {
 		attempt.ObservedAt = attempt.CreatedAt

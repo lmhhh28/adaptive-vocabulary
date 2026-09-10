@@ -153,3 +153,22 @@ func TestRetireQuestionVersion(t *testing.T) {
 		t.Errorf("expected status retired, got %s", resp.Status)
 	}
 }
+
+func TestRetireQuestionVersion_RevisionConflict(t *testing.T) {
+	db, svc, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	ctx := context.Background()
+	var qvID string
+	err := db.DB.QueryRow("SELECT id FROM question_version LIMIT 1").Scan(&qvID)
+	if err != nil {
+		t.Fatalf("query question_version failed: %v", err)
+	}
+
+	wrongRev := int64(999)
+	_, err = svc.RetireQuestionVersion(ctx, qvID, "conflict test", &wrongRev)
+	if err != revision.ErrRevisionConflict {
+		t.Errorf("expected ErrRevisionConflict, got %v", err)
+	}
+}
+

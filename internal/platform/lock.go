@@ -46,5 +46,6 @@ func (l *ProcessLock) Release() error {
 	_ = syscall.Flock(int(l.file.Fd()), syscall.LOCK_UN)
 	err := l.file.Close()
 	l.file = nil
+	_ = os.Remove(l.path)
 	return err
 }

@@ -67,9 +67,14 @@ func (s *Selector) SelectNextQuestion(ctx context.Context, req SelectionRequest)
 	for rowsCorr.Next() {
 		var rc rawCorrection
 		if err := rowsCorr.Scan(&rc.senseID, &rc.taskFamily, &rc.triggeringSeq, &rc.lexemeID); err != nil {
+			_ = rowsCorr.Close()
 			return nil, fmt.Errorf("scan correction item: %w", err)
 		}
 		rawCorrections = append(rawCorrections, rc)
+	}
+	if err := rowsCorr.Err(); err != nil {
+		_ = rowsCorr.Close()
+		return nil, fmt.Errorf("iterate corrections: %w", err)
 	}
 	_ = rowsCorr.Close()
 
@@ -136,9 +141,6 @@ func (s *Selector) SelectNextQuestion(ctx context.Context, req SelectionRequest)
 			qv:            chosenQV,
 			formID:        chosenQV.FormID,
 		})
-	}
-	if err := rowsCorr.Err(); err != nil {
-		return nil, fmt.Errorf("iterate corrections: %w", err)
 	}
 
 	if len(eligibleCorrections) > 0 {
@@ -527,7 +529,9 @@ func (s *Selector) getPublishedVersionsForUnit(ctx context.Context, senseID, tas
 		if candidateID.Valid {
 			qv.CandidateID = &candidateID.String
 		}
-		_ = json.Unmarshal([]byte(optionsJSON), &qv.Options)
+		if err := json.Unmarshal([]byte(optionsJSON), &qv.Options); err != nil {
+			return nil, fmt.Errorf("unmarshal options for question version %s: %w", qv.ID, err)
+		}
 
 		// Group by FormID to take latest published version per form
 		if !seenForms[qv.FormID] {

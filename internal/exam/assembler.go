@@ -44,6 +44,11 @@ type CandidateQuestion struct {
 	StemLexemeIDs       []string
 }
 
+const (
+	// DefaultMaxSearchSteps defines the default backtracking search step ceiling.
+	DefaultMaxSearchSteps = 20000
+)
+
 // Assembler solves for a feasible paper satisfying all exam constraints.
 type Assembler struct {
 	db             *sql.DB
@@ -52,7 +57,7 @@ type Assembler struct {
 
 func NewAssembler(db *sql.DB, maxSearchSteps int) *Assembler {
 	if maxSearchSteps <= 0 {
-		maxSearchSteps = 20000
+		maxSearchSteps = DefaultMaxSearchSteps
 	}
 	return &Assembler{
 		db:             db,
@@ -108,6 +113,8 @@ func ResolveQuotas(questionCount int, requestedQuotas map[string]int) (map[strin
 
 // Assemble selects a paper of candidate questions satisfying all frozen constraints.
 func (a *Assembler) Assemble(tc *core.TxnContext, bankID string, quotas map[string]int) ([]CandidateQuestion, error) {
+	ctx := tc.Context()
+
 	// 1. Build lexeme lookup maps: canonical_form and alias form -> lexeme_id
 	formToLexeme := make(map[string]string)
 	{
@@ -123,6 +130,9 @@ func (a *Assembler) Assemble(tc *core.TxnContext, bankID string, quotas map[stri
 			}
 			formToLexeme[strings.ToLower(strings.TrimSpace(cform))] = id
 		}
+		if err := rows.Err(); err != nil {
+			return nil, fmt.Errorf("iterate lexemes: %w", err)
+		}
 	}
 	{
 		rows, err := tc.Query("SELECT form, lexeme_id FROM lexeme_alias")
@@ -136,6 +146,9 @@ func (a *Assembler) Assemble(tc *core.TxnContext, bankID string, quotas map[stri
 				return nil, err
 			}
 			formToLexeme[strings.ToLower(strings.TrimSpace(alias))] = lexemeID
+		}
+		if err := rows.Err(); err != nil {
+			return nil, fmt.Errorf("iterate lexeme aliases: %w", err)
 		}
 	}
 
@@ -153,6 +166,9 @@ func (a *Assembler) Assemble(tc *core.TxnContext, bankID string, quotas map[stri
 				return nil, err
 			}
 			senseToLexeme[sID] = lID
+		}
+		if err := rows.Err(); err != nil {
+			return nil, fmt.Errorf("iterate senses: %w", err)
 		}
 	}
 
@@ -206,6 +222,9 @@ func (a *Assembler) Assemble(tc *core.TxnContext, bankID string, quotas map[stri
 		}
 
 		byFamily[q.TaskFamily] = append(byFamily[q.TaskFamily], q)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate question pool: %w", err)
 	}
 
 	// Sort each family pool deterministically by ID
@@ -267,6 +286,10 @@ func (a *Assembler) Assemble(tc *core.TxnContext, bankID string, quotas map[stri
 
 	var backtrack func(taskIndex int) (bool, error)
 	backtrack = func(taskIndex int) (bool, error) {
+		if err := ctx.Err(); err != nil {
+			return false, err
+		}
+
 		if taskIndex == len(requiredTasks) {
 			return true, nil
 		}

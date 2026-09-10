@@ -30,6 +30,25 @@ func TestNormalizationAndHashing(t *testing.T) {
 	}
 }
 
+func TestUnicodeNormalization(t *testing.T) {
+	tests := []struct {
+		input string
+		want  string
+	}{
+		{"  CAFÉ  ", "café"},
+		{"\t\n  MÜNCHEN  \n\t", "münchen"},
+		{"   中文   词汇   ", "中文 词汇"},
+		{"  ГОРНЫЙ  ВОЗДУХ  ", "горный воздух"},
+	}
+
+	for _, tt := range tests {
+		got := NormalizeText(tt.input)
+		if got != tt.want {
+			t.Errorf("NormalizeText(%q) = %q, want %q", tt.input, got, tt.want)
+		}
+	}
+}
+
 func TestSeedCoreIdempotency(t *testing.T) {
 	tmpDir, err := os.MkdirTemp("", "avocab-content-test-*")
 	if err != nil {

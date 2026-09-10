@@ -114,7 +114,10 @@ func (h *HomeHandler) ServeClientContext(w http.ResponseWriter, r *http.Request)
 		sessionID = cookie.Value
 	} else {
 		b := make([]byte, 16)
-		_, _ = rand.Read(b)
+		if _, err := rand.Read(b); err != nil {
+			WriteJSONError(w, r, http.StatusInternalServerError, "INTERNAL_ERROR", "failed to generate session id", nil)
+			return
+		}
 		sessionID = hex.EncodeToString(b)
 		http.SetCookie(w, &http.Cookie{
 			Name:     "avocab_session",

@@ -126,14 +126,19 @@ func (s *Service) RestoreBackup(ctx context.Context, inputDir, targetDir string)
 		}
 		var claimed []claimedItem
 		rows, err := tc.Query("SELECT id, fencing_token, attempt_number FROM generation_item WHERE status = 'claimed'")
-		if err == nil {
-			for rows.Next() {
-				var c claimedItem
-				if err := rows.Scan(&c.id, &c.fence, &c.attempt); err == nil {
-					claimed = append(claimed, c)
-				}
+		if err != nil {
+			return fmt.Errorf("query claimed generation items: %w", err)
+		}
+		defer rows.Close()
+		for rows.Next() {
+			var c claimedItem
+			if err := rows.Scan(&c.id, &c.fence, &c.attempt); err != nil {
+				return fmt.Errorf("scan claimed generation item: %w", err)
 			}
-			rows.Close()
+			claimed = append(claimed, c)
+		}
+		if err := rows.Err(); err != nil {
+			return fmt.Errorf("iterate claimed generation items: %w", err)
 		}
 
 		for _, c := range claimed {

@@ -10,8 +10,27 @@ import (
 
 type DB struct {
 	*sql.DB
+	ReadOnly *sql.DB
 	Version  string
 	SourceID string
+}
+
+func (d *DB) Close() error {
+	var errs []error
+	if d.ReadOnly != nil {
+		if err := d.ReadOnly.Close(); err != nil {
+			errs = append(errs, err)
+		}
+	}
+	if d.DB != nil {
+		if err := d.DB.Close(); err != nil {
+			errs = append(errs, err)
+		}
+	}
+	if len(errs) > 0 {
+		return fmt.Errorf("close db: %v", errs)
+	}
+	return nil
 }
 
 func OpenDB(dataDir string) (*DB, error) {
@@ -59,8 +78,18 @@ func OpenDB(dataDir string) (*DB, error) {
 		}
 	}
 
+	// Read connection pool with query_only=1 for concurrent read scalability under WAL
+	readDSN := fmt.Sprintf("%s?_pragma=foreign_keys(1)&_pragma=busy_timeout(5000)&_pragma=synchronous(FULL)&_pragma=query_only(1)", dbPath)
+	readDB, err := sql.Open("sqlite", readDSN)
+	if err != nil {
+		_ = sqlDB.Close()
+		return nil, fmt.Errorf("open sqlite read database: %w", err)
+	}
+	readDB.SetMaxOpenConns(4)
+
 	return &DB{
 		DB:       sqlDB,
+		ReadOnly: readDB,
 		Version:  version,
 		SourceID: sourceID,
 	}, nil

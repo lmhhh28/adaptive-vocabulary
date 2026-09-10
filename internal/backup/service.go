@@ -222,7 +222,7 @@ func computeFileHash(path string) (int64, string, error) {
 	return n, hex.EncodeToString(h.Sum(nil)), nil
 }
 
-func copyFile(src, dst string) error {
+func copyFile(src, dst string) (err error) {
 	in, err := os.Open(src)
 	if err != nil {
 		return err
@@ -233,8 +233,23 @@ func copyFile(src, dst string) error {
 	if err != nil {
 		return err
 	}
-	defer out.Close()
+	defer func() {
+		if cErr := out.Close(); err == nil && cErr != nil {
+			err = cErr
+		}
+	}()
 
-	_, err = io.Copy(out, in)
-	return err
+	if _, err = io.Copy(out, in); err != nil {
+		return err
+	}
+	if err = out.Sync(); err != nil {
+		return err
+	}
+	return nil
 }
+
+// CopyFileForTest exports copyFile for package testing.
+func CopyFileForTest(src, dst string) error {
+	return copyFile(src, dst)
+}
+

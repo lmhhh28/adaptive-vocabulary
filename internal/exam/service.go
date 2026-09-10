@@ -375,7 +375,9 @@ func (s *Service) GetExam(ctx context.Context, examID string) (*ExamDetailRespon
 		}
 
 		var snap InstanceSnapshot
-		_ = json.Unmarshal([]byte(snapJSON), &snap)
+		if err := json.Unmarshal([]byte(snapJSON), &snap); err != nil {
+			return nil, fmt.Errorf("unmarshal instance snapshot for %s: %w", instID, err)
+		}
 
 		var pubOpts []PublicOption
 		for _, opt := range snap.Options {
@@ -402,6 +404,9 @@ func (s *Service) GetExam(ctx context.Context, examID string) (*ExamDetailRespon
 			SelectedOptionID: optIDPtr,
 			RevisionCount:    revisionCount,
 		})
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate exam instances: %w", err)
 	}
 
 	var resultURL *string
@@ -543,7 +548,9 @@ func (s *Service) RecordResponseEvent(
 		}
 
 		var snap InstanceSnapshot
-		_ = json.Unmarshal([]byte(snapJSON), &snap)
+		if err := json.Unmarshal([]byte(snapJSON), &snap); err != nil {
+			return fmt.Errorf("unmarshal instance snapshot: %w", err)
+		}
 
 		// If selecting, verify option is in question
 		if req.Action == "select" {
@@ -971,7 +978,9 @@ func (s *Service) submitExamInternal(tc *core.TxnContext, examID string, submiss
 		if err := rows.Scan(&it.InstID, &it.Ordinal, &snapJSON, &it.SelectedOptionID, &it.FirstOptionID, &it.RevisionCount, &it.IsFirstReliable, &it.FirstEventID, &it.FinalEventID); err != nil {
 			return "", err
 		}
-		_ = json.Unmarshal([]byte(snapJSON), &it.Snapshot)
+		if err := json.Unmarshal([]byte(snapJSON), &it.Snapshot); err != nil {
+			return "", fmt.Errorf("unmarshal item snapshot %s: %w", it.InstID, err)
+		}
 
 		totalCount++
 		if !it.SelectedOptionID.Valid {
@@ -1004,6 +1013,9 @@ func (s *Service) submitExamInternal(tc *core.TxnContext, examID string, submiss
 		}
 
 		items = append(items, it)
+	}
+	if err := rows.Err(); err != nil {
+		return "", fmt.Errorf("iterate items for settlement: %w", err)
 	}
 
 	var ratio *float64
@@ -1264,7 +1276,9 @@ func (s *Service) GetExamResult(ctx context.Context, examID string) (*ExamResult
 		}
 
 		var snap InstanceSnapshot
-		_ = json.Unmarshal([]byte(snapJSON), &snap)
+		if err := json.Unmarshal([]byte(snapJSON), &snap); err != nil {
+			return nil, fmt.Errorf("unmarshal instance snapshot for %s: %w", instID, err)
+		}
 
 		var resOpts []ResultOption
 		for _, opt := range snap.Options {
@@ -1312,6 +1326,9 @@ func (s *Service) GetExamResult(ctx context.Context, examID string) (*ExamResult
 			ResponseHistory:  respHistory,
 		})
 	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate result questions: %w", err)
+	}
 
 	return &ExamResultResponse{
 		ResultRevision:   resultRevision,
@@ -1342,6 +1359,9 @@ func (s *Service) SettleExpiredExams(ctx context.Context) (int, error) {
 			return 0, err
 		}
 		expiredIDs = append(expiredIDs, id)
+	}
+	if err := rows.Err(); err != nil {
+		return 0, fmt.Errorf("iterate expired exams: %w", err)
 	}
 
 	settled := 0

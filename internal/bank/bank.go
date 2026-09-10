@@ -110,29 +110,58 @@ func (s *Service) ListBanks(ctx context.Context) ([]BankSummary, error) {
 		return nil, err
 	}
 
-	for i := range banks {
-		// Member count
+	// Batch query member counts for all banks
+	memberCounts := make(map[string]int)
+	mRows, err := s.db.QueryContext(ctx, `SELECT bank_id, COUNT(*) FROM bank_sense GROUP BY bank_id`)
+	if err != nil {
+		return nil, fmt.Errorf("query bank member counts: %w", err)
+	}
+	defer mRows.Close()
+	for mRows.Next() {
+		var bID string
 		var count int
-		_ = s.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM bank_sense WHERE bank_id = ?", banks[i].ID).Scan(&count)
-		banks[i].MemberCount = count
+		if err := mRows.Scan(&bID, &count); err != nil {
+			return nil, fmt.Errorf("scan bank member count: %w", err)
+		}
+		memberCounts[bID] = count
+	}
+	if err := mRows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate bank member counts: %w", err)
+	}
 
-		// Task counts
-		tRows, err := s.db.QueryContext(ctx, `
-			SELECT qv.task_family, COUNT(DISTINCT qv.id)
-			FROM bank_sense bs
-			JOIN question_version qv ON bs.sense_id = qv.sense_id
-			WHERE bs.bank_id = ? AND qv.status = 'published'
-			GROUP BY qv.task_family
-		`, banks[i].ID)
-		if err == nil {
-			for tRows.Next() {
-				var tf string
-				var c int
-				if err := tRows.Scan(&tf, &c); err == nil {
-					banks[i].TaskCounts[tf] = c
-				}
-			}
-			tRows.Close()
+	// Batch query task counts for all banks
+	type bankTaskKey struct {
+		bankID string
+		family string
+	}
+	taskCounts := make(map[bankTaskKey]int)
+	tRows, err := s.db.QueryContext(ctx, `
+		SELECT bs.bank_id, qv.task_family, COUNT(DISTINCT qv.id)
+		FROM bank_sense bs
+		JOIN question_version qv ON bs.sense_id = qv.sense_id
+		WHERE qv.status = 'published'
+		GROUP BY bs.bank_id, qv.task_family
+	`)
+	if err != nil {
+		return nil, fmt.Errorf("query bank task counts: %w", err)
+	}
+	defer tRows.Close()
+	for tRows.Next() {
+		var bID, tf string
+		var c int
+		if err := tRows.Scan(&bID, &tf, &c); err != nil {
+			return nil, fmt.Errorf("scan bank task count: %w", err)
+		}
+		taskCounts[bankTaskKey{bankID: bID, family: tf}] = c
+	}
+	if err := tRows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate bank task counts: %w", err)
+	}
+
+	for i := range banks {
+		banks[i].MemberCount = memberCounts[banks[i].ID]
+		for _, tf := range []string{"meaning_recognition", "reverse_selection", "context_selection"} {
+			banks[i].TaskCounts[tf] = taskCounts[bankTaskKey{bankID: banks[i].ID, family: tf}]
 		}
 	}
 
