@@ -1,0 +1,127 @@
+{
+  "run_id": "run_20260912_052727_2f69594f",
+  "module": "W05",
+  "design_version": "web-design-v1.1",
+  "code_revision": "89305a64b273e9555fb0bf0b1ff58c7859f2d133",
+  "status": "passed",
+  "passed": 4,
+  "failed": 0,
+  "skipped": 0,
+  "cases": [
+    {
+      "id": "W05-01",
+      "name": "test_w05_01",
+      "scenario": "输入格式与大小/行数边界",
+      "status": "passed",
+      "duration_seconds": 18.584,
+      "artifacts": [
+        "/Users/lmhhh/Desktop/adaptive-vocabulary/artifacts/web-e2e/run_20260912_052727_2f69594f/W05/W05-01/case.log",
+        "/Users/lmhhh/Desktop/adaptive-vocabulary/artifacts/web-e2e/run_20260912_052727_2f69594f/W05/W05-01/screenshot.png",
+        "/Users/lmhhh/Desktop/adaptive-vocabulary/artifacts/web-e2e/run_20260912_052727_2f69594f/W05/W05-01/trace.zip",
+        "/Users/lmhhh/Desktop/adaptive-vocabulary/artifacts/web-e2e/run_20260912_052727_2f69594f/W05/W05-01/processes.json",
+        "/Users/lmhhh/Desktop/adaptive-vocabulary/artifacts/web-e2e/run_20260912_052727_2f69594f/W05/W05-01/state-summary.json",
+        "/Users/lmhhh/Desktop/adaptive-vocabulary/artifacts/web-e2e/run_20260912_052727_2f69594f/W05/W05-01/server/server.log"
+      ],
+      "details": {
+        "txt_import_verified": true,
+        "csv_import_verified": true,
+        "json_import_verified": true,
+        "row_limit_boundary_verified": true,
+        "file_size_boundary_verified": true
+      }
+    },
+    {
+      "id": "W05-02",
+      "name": "test_w05_02",
+      "scenario": "分页消歧、多个词义采纳与排除",
+      "status": "passed",
+      "duration_seconds": 6.376,
+      "artifacts": [
+        "/Users/lmhhh/Desktop/adaptive-vocabulary/artifacts/web-e2e/run_20260912_052727_2f69594f/W05/W05-02/case.log",
+        "/Users/lmhhh/Desktop/adaptive-vocabulary/artifacts/web-e2e/run_20260912_052727_2f69594f/W05/W05-02/screenshot.png",
+        "/Users/lmhhh/Desktop/adaptive-vocabulary/artifacts/web-e2e/run_20260912_052727_2f69594f/W05/W05-02/trace.zip",
+        "/Users/lmhhh/Desktop/adaptive-vocabulary/artifacts/web-e2e/run_20260912_052727_2f69594f/W05/W05-02/processes.json",
+        "/Users/lmhhh/Desktop/adaptive-vocabulary/artifacts/web-e2e/run_20260912_052727_2f69594f/W05/W05-02/state-summary.json",
+        "/Users/lmhhh/Desktop/adaptive-vocabulary/artifacts/web-e2e/run_20260912_052727_2f69594f/W05/W05-02/server/server.log"
+      ],
+      "details": {
+        "pagination_and_filtering_verified": true,
+        "multi_sense_adopt_verified": true,
+        "exclusion_verified": true,
+        "summary_counts_live_update_verified": true
+      }
+    },
+    {
+      "id": "W05-03",
+      "name": "test_w05_03",
+      "scenario": "CAS/幂等及已接受响应丢失",
+      "status": "passed",
+      "duration_seconds": 1.865,
+      "artifacts": [
+        "/Users/lmhhh/Desktop/adaptive-vocabulary/artifacts/web-e2e/run_20260912_052727_2f69594f/W05/W05-03/case.log",
+        "/Users/lmhhh/Desktop/adaptive-vocabulary/artifacts/web-e2e/run_20260912_052727_2f69594f/W05/W05-03/screenshot.png",
+        "/Users/lmhhh/Desktop/adaptive-vocabulary/artifacts/web-e2e/run_20260912_052727_2f69594f/W05/W05-03/trace.zip",
+        "/Users/lmhhh/Desktop/adaptive-vocabulary/artifacts/web-e2e/run_20260912_052727_2f69594f/W05/W05-03/processes.json",
+        "/Users/lmhhh/Desktop/adaptive-vocabulary/artifacts/web-e2e/run_20260912_052727_2f69594f/W05/W05-03/state-summary.json",
+        "/Users/lmhhh/Desktop/adaptive-vocabulary/artifacts/web-e2e/run_20260912_052727_2f69594f/W05/W05-03/server/server.log"
+      ],
+      "details": {
+        "import_cas_conflict_verified": true,
+        "import_idempotency_verified": true,
+        "resolve_cas_conflict_verified": true,
+        "resolve_idempotent_retry_verified": true
+      }
+    },
+    {
+      "id": "W05-04",
+      "name": "test_w05_04",
+      "scenario": "导入汇总与题库成员一致",
+      "status": "passed",
+      "duration_seconds": 3.245,
+      "artifacts": [
+        "/Users/lmhhh/Desktop/adaptive-vocabulary/artifacts/web-e2e/run_20260912_052727_2f69594f/W05/W05-04/case.log",
+        "/Users/lmhhh/Desktop/adaptive-vocabulary/artifacts/web-e2e/run_20260912_052727_2f69594f/W05/W05-04/screenshot.png",
+        "/Users/lmhhh/Desktop/adaptive-vocabulary/artifacts/web-e2e/run_20260912_052727_2f69594f/W05/W05-04/trace.zip",
+        "/Users/lmhhh/Desktop/adaptive-vocabulary/artifacts/web-e2e/run_20260912_052727_2f69594f/W05/W05-04/processes.json",
+        "/Users/lmhhh/Desktop/adaptive-vocabulary/artifacts/web-e2e/run_20260912_052727_2f69594f/W05/W05-04/state-summary.json",
+        "/Users/lmhhh/Desktop/adaptive-vocabulary/artifacts/web-e2e/run_20260912_052727_2f69594f/W05/W05-04/server/server.log"
+      ],
+      "details": {
+        "bank_created": "62baedaf-925d-45d1-9e23-69f982d88817",
+        "import_total_entries": 3,
+        "disambiguated_and_adopted_both_senses": true,
+        "sqlite_bank_sense_count": 4,
+        "bank_detail_ui_verified": true
+      }
+    }
+  ],
+  "start_time": "2026-09-12T05:27:27.829106+00:00",
+  "end_time": "2026-09-12T05:27:57.913150+00:00",
+  "duration_seconds": 30.072,
+  "artifacts": [
+    "/Users/lmhhh/Desktop/adaptive-vocabulary/artifacts/web-e2e/run_20260912_052727_2f69594f/W05/W05-01/case.log",
+    "/Users/lmhhh/Desktop/adaptive-vocabulary/artifacts/web-e2e/run_20260912_052727_2f69594f/W05/W05-01/screenshot.png",
+    "/Users/lmhhh/Desktop/adaptive-vocabulary/artifacts/web-e2e/run_20260912_052727_2f69594f/W05/W05-01/trace.zip",
+    "/Users/lmhhh/Desktop/adaptive-vocabulary/artifacts/web-e2e/run_20260912_052727_2f69594f/W05/W05-01/processes.json",
+    "/Users/lmhhh/Desktop/adaptive-vocabulary/artifacts/web-e2e/run_20260912_052727_2f69594f/W05/W05-01/state-summary.json",
+    "/Users/lmhhh/Desktop/adaptive-vocabulary/artifacts/web-e2e/run_20260912_052727_2f69594f/W05/W05-01/server/server.log",
+    "/Users/lmhhh/Desktop/adaptive-vocabulary/artifacts/web-e2e/run_20260912_052727_2f69594f/W05/W05-02/case.log",
+    "/Users/lmhhh/Desktop/adaptive-vocabulary/artifacts/web-e2e/run_20260912_052727_2f69594f/W05/W05-02/screenshot.png",
+    "/Users/lmhhh/Desktop/adaptive-vocabulary/artifacts/web-e2e/run_20260912_052727_2f69594f/W05/W05-02/trace.zip",
+    "/Users/lmhhh/Desktop/adaptive-vocabulary/artifacts/web-e2e/run_20260912_052727_2f69594f/W05/W05-02/processes.json",
+    "/Users/lmhhh/Desktop/adaptive-vocabulary/artifacts/web-e2e/run_20260912_052727_2f69594f/W05/W05-02/state-summary.json",
+    "/Users/lmhhh/Desktop/adaptive-vocabulary/artifacts/web-e2e/run_20260912_052727_2f69594f/W05/W05-02/server/server.log",
+    "/Users/lmhhh/Desktop/adaptive-vocabulary/artifacts/web-e2e/run_20260912_052727_2f69594f/W05/W05-03/case.log",
+    "/Users/lmhhh/Desktop/adaptive-vocabulary/artifacts/web-e2e/run_20260912_052727_2f69594f/W05/W05-03/screenshot.png",
+    "/Users/lmhhh/Desktop/adaptive-vocabulary/artifacts/web-e2e/run_20260912_052727_2f69594f/W05/W05-03/trace.zip",
+    "/Users/lmhhh/Desktop/adaptive-vocabulary/artifacts/web-e2e/run_20260912_052727_2f69594f/W05/W05-03/processes.json",
+    "/Users/lmhhh/Desktop/adaptive-vocabulary/artifacts/web-e2e/run_20260912_052727_2f69594f/W05/W05-03/state-summary.json",
+    "/Users/lmhhh/Desktop/adaptive-vocabulary/artifacts/web-e2e/run_20260912_052727_2f69594f/W05/W05-03/server/server.log",
+    "/Users/lmhhh/Desktop/adaptive-vocabulary/artifacts/web-e2e/run_20260912_052727_2f69594f/W05/W05-04/case.log",
+    "/Users/lmhhh/Desktop/adaptive-vocabulary/artifacts/web-e2e/run_20260912_052727_2f69594f/W05/W05-04/screenshot.png",
+    "/Users/lmhhh/Desktop/adaptive-vocabulary/artifacts/web-e2e/run_20260912_052727_2f69594f/W05/W05-04/trace.zip",
+    "/Users/lmhhh/Desktop/adaptive-vocabulary/artifacts/web-e2e/run_20260912_052727_2f69594f/W05/W05-04/processes.json",
+    "/Users/lmhhh/Desktop/adaptive-vocabulary/artifacts/web-e2e/run_20260912_052727_2f69594f/W05/W05-04/state-summary.json",
+    "/Users/lmhhh/Desktop/adaptive-vocabulary/artifacts/web-e2e/run_20260912_052727_2f69594f/W05/W05-04/server/server.log"
+  ]
+}

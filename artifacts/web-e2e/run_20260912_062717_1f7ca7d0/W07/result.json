@@ -1,0 +1,102 @@
+{
+  "run_id": "run_20260912_062717_1f7ca7d0",
+  "module": "W07",
+  "design_version": "web-design-v1.1",
+  "code_revision": "89305a64b273e9555fb0bf0b1ff58c7859f2d133",
+  "status": "passed",
+  "passed": 5,
+  "failed": 0,
+  "skipped": 0,
+  "cases": [
+    {
+      "id": "W07-01",
+      "name": "test_w07_01",
+      "scenario": "处置记录与内容发布事实区分",
+      "status": "passed",
+      "duration_seconds": 3.176,
+      "artifacts": [
+        "/Users/lmhhh/Desktop/adaptive-vocabulary/artifacts/web-e2e/run_20260912_062717_1f7ca7d0/W07/W07-01/case.log"
+      ],
+      "details": {
+        "finding_id": "923525c0-44eb-488b-9628-6739d28b4f22",
+        "candidate_id": "288c1926-758b-4340-b851-9f76f6bba42e",
+        "resolution_action": "exclude",
+        "disposition_recorded_in_db": true,
+        "candidate_not_published_verified": true
+      }
+    },
+    {
+      "id": "W07-02",
+      "name": "test_w07_02",
+      "scenario": "退役影响后续选题并保留旧事实",
+      "status": "passed",
+      "duration_seconds": 1.377,
+      "artifacts": [
+        "/Users/lmhhh/Desktop/adaptive-vocabulary/artifacts/web-e2e/run_20260912_062717_1f7ca7d0/W07/W07-02/case.log"
+      ],
+      "details": {
+        "retired_qv_id": "00000000-0000-4000-8000-000000000301",
+        "history_preserved": true,
+        "selection_exclusion_verified": true
+      }
+    },
+    {
+      "id": "W07-03",
+      "name": "test_w07_03",
+      "scenario": "重建成功与HTTP200业务失败",
+      "status": "passed",
+      "duration_seconds": 2.8,
+      "artifacts": [
+        "/Users/lmhhh/Desktop/adaptive-vocabulary/artifacts/web-e2e/run_20260912_062717_1f7ca7d0/W07/W07-03/case.log"
+      ],
+      "details": {
+        "disposition_rebuild_success_verified": true,
+        "http_status_code": 200,
+        "business_status": "failed",
+        "business_failure_alert_rendered": true
+      }
+    },
+    {
+      "id": "W07-04",
+      "name": "test_w07_04",
+      "scenario": "活动会话保护和维护禁写",
+      "status": "passed",
+      "duration_seconds": 1.802,
+      "artifacts": [
+        "/Users/lmhhh/Desktop/adaptive-vocabulary/artifacts/web-e2e/run_20260912_062717_1f7ca7d0/W07/W07-04/case.log"
+      ],
+      "details": {
+        "active_session_409_boundary_verified": true,
+        "active_session_alert_rendered": true,
+        "maintenance_503_write_block_verified": true,
+        "maintenance_alert_rendered": true
+      }
+    },
+    {
+      "id": "W07-05",
+      "name": "test_w07_05",
+      "scenario": "学习报告null及证据条件",
+      "status": "passed",
+      "duration_seconds": 1.365,
+      "artifacts": [
+        "/Users/lmhhh/Desktop/adaptive-vocabulary/artifacts/web-e2e/run_20260912_062717_1f7ca7d0/W07/W07-05/case.log"
+      ],
+      "details": {
+        "evidence_policy_verified": "observation-v2",
+        "empty_state_null_verified": true,
+        "answered_sense_id": "00000000-0000-4000-8000-000000000101",
+        "valid_samples_and_fsrs_metrics_rendered": true
+      }
+    }
+  ],
+  "start_time": "2026-09-12T06:27:17.996811+00:00",
+  "end_time": "2026-09-12T06:27:28.531097+00:00",
+  "duration_seconds": 10.523,
+  "artifacts": [
+    "/Users/lmhhh/Desktop/adaptive-vocabulary/artifacts/web-e2e/run_20260912_062717_1f7ca7d0/W07/W07-01/case.log",
+    "/Users/lmhhh/Desktop/adaptive-vocabulary/artifacts/web-e2e/run_20260912_062717_1f7ca7d0/W07/W07-02/case.log",
+    "/Users/lmhhh/Desktop/adaptive-vocabulary/artifacts/web-e2e/run_20260912_062717_1f7ca7d0/W07/W07-03/case.log",
+    "/Users/lmhhh/Desktop/adaptive-vocabulary/artifacts/web-e2e/run_20260912_062717_1f7ca7d0/W07/W07-04/case.log",
+    "/Users/lmhhh/Desktop/adaptive-vocabulary/artifacts/web-e2e/run_20260912_062717_1f7ca7d0/W07/W07-05/case.log"
+  ]
+}

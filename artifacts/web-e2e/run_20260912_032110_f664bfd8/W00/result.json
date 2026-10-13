@@ -1,0 +1,128 @@
+{
+  "run_id": "run_20260912_032110_f664bfd8",
+  "module": "W00",
+  "design_version": "web-design-v1.1",
+  "code_revision": "89305a64b273e9555fb0bf0b1ff58c7859f2d133",
+  "status": "passed",
+  "passed": 4,
+  "failed": 0,
+  "skipped": 0,
+  "cases": [
+    {
+      "id": "W00-01",
+      "name": "test_w00_01",
+      "scenario": "构建资源、路由、中文壳与真实资源哈希",
+      "status": "passed",
+      "duration_seconds": 1.915,
+      "artifacts": [
+        "/Users/lmhhh/Desktop/adaptive-vocabulary/artifacts/web-e2e/run_20260912_032110_f664bfd8/W00/W00-01/case.log",
+        "/Users/lmhhh/Desktop/adaptive-vocabulary/artifacts/web-e2e/run_20260912_032110_f664bfd8/W00/W00-01/screenshot.png",
+        "/Users/lmhhh/Desktop/adaptive-vocabulary/artifacts/web-e2e/run_20260912_032110_f664bfd8/W00/W00-01/trace.zip",
+        "/Users/lmhhh/Desktop/adaptive-vocabulary/artifacts/web-e2e/run_20260912_032110_f664bfd8/W00/W00-01/processes.json",
+        "/Users/lmhhh/Desktop/adaptive-vocabulary/artifacts/web-e2e/run_20260912_032110_f664bfd8/W00/W00-01/state-summary.json",
+        "/Users/lmhhh/Desktop/adaptive-vocabulary/artifacts/web-e2e/run_20260912_032110_f664bfd8/W00/W00-01/server/server.log"
+      ],
+      "details": {
+        "base_url": "http://127.0.0.1:54012",
+        "asset_hash": "1eeb7b6841dedc86d80cc627086e6fe911b88ae6930225a0f1595e07279ea415",
+        "network_events_count": 9
+      }
+    },
+    {
+      "id": "W00-02",
+      "name": "test_w00_02",
+      "scenario": "真实 context、CSRF、维护与活动会话",
+      "status": "passed",
+      "duration_seconds": 2.298,
+      "artifacts": [
+        "/Users/lmhhh/Desktop/adaptive-vocabulary/artifacts/web-e2e/run_20260912_032110_f664bfd8/W00/W00-02/case.log",
+        "/Users/lmhhh/Desktop/adaptive-vocabulary/artifacts/web-e2e/run_20260912_032110_f664bfd8/W00/W00-02/screenshot.png",
+        "/Users/lmhhh/Desktop/adaptive-vocabulary/artifacts/web-e2e/run_20260912_032110_f664bfd8/W00/W00-02/trace.zip",
+        "/Users/lmhhh/Desktop/adaptive-vocabulary/artifacts/web-e2e/run_20260912_032110_f664bfd8/W00/W00-02/processes.json",
+        "/Users/lmhhh/Desktop/adaptive-vocabulary/artifacts/web-e2e/run_20260912_032110_f664bfd8/W00/W00-02/state-summary.json",
+        "/Users/lmhhh/Desktop/adaptive-vocabulary/artifacts/web-e2e/run_20260912_032110_f664bfd8/W00/W00-02/server/server.log"
+      ],
+      "details": {
+        "session_id_prefix": "b72ead67",
+        "csrf_validated": true,
+        "maintenance_gate_verified": true
+      }
+    },
+    {
+      "id": "W00-03",
+      "name": "test_w00_03",
+      "scenario": "outbox 重开/存储不可用与共享组件键盘",
+      "status": "passed",
+      "duration_seconds": 5.06,
+      "artifacts": [
+        "/Users/lmhhh/Desktop/adaptive-vocabulary/artifacts/web-e2e/run_20260912_032110_f664bfd8/W00/W00-03/case.log",
+        "/Users/lmhhh/Desktop/adaptive-vocabulary/artifacts/web-e2e/run_20260912_032110_f664bfd8/W00/W00-03/screenshot.png",
+        "/Users/lmhhh/Desktop/adaptive-vocabulary/artifacts/web-e2e/run_20260912_032110_f664bfd8/W00/W00-03/trace.zip",
+        "/Users/lmhhh/Desktop/adaptive-vocabulary/artifacts/web-e2e/run_20260912_032110_f664bfd8/W00/W00-03/processes.json",
+        "/Users/lmhhh/Desktop/adaptive-vocabulary/artifacts/web-e2e/run_20260912_032110_f664bfd8/W00/W00-03/state-summary.json",
+        "/Users/lmhhh/Desktop/adaptive-vocabulary/artifacts/web-e2e/run_20260912_032110_f664bfd8/W00/W00-03/server/server.log"
+      ],
+      "details": {
+        "outbox_reopen_verified": true,
+        "outbox_fault_verified": true,
+        "keyboard_shortcuts_verified": true,
+        "answer_sheet_navigation_verified": true
+      }
+    },
+    {
+      "id": "W00-04",
+      "name": "test_w00_04",
+      "scenario": "零测试、缺证据、超时、孤儿进程必须失败",
+      "status": "passed",
+      "duration_seconds": 1.632,
+      "artifacts": [
+        "/Users/lmhhh/Desktop/adaptive-vocabulary/artifacts/web-e2e/run_20260912_032110_f664bfd8/W00/W00-04/case.log",
+        "/Users/lmhhh/Desktop/adaptive-vocabulary/artifacts/web-e2e/run_20260912_032110_f664bfd8/W00/W00-04/timeout_subcase.py",
+        "/Users/lmhhh/Desktop/adaptive-vocabulary/artifacts/web-e2e/run_20260912_032110_f664bfd8/W00/W00-04/timeout.log",
+        "/Users/lmhhh/Desktop/adaptive-vocabulary/artifacts/web-e2e/run_20260912_032110_f664bfd8/W00/W00-04/timeout_ctx.json",
+        "/Users/lmhhh/Desktop/adaptive-vocabulary/artifacts/web-e2e/run_20260912_032110_f664bfd8/W00/W00-04/orphan_subcase.py",
+        "/Users/lmhhh/Desktop/adaptive-vocabulary/artifacts/web-e2e/run_20260912_032110_f664bfd8/W00/W00-04/orphan.log",
+        "/Users/lmhhh/Desktop/adaptive-vocabulary/artifacts/web-e2e/run_20260912_032110_f664bfd8/W00/W00-04/ctx_orphan.json",
+        "/Users/lmhhh/Desktop/adaptive-vocabulary/artifacts/web-e2e/run_20260912_032110_f664bfd8/W00/W00-04/res_orphan.json",
+        "/Users/lmhhh/Desktop/adaptive-vocabulary/artifacts/web-e2e/run_20260912_032110_f664bfd8/W00/W00-04/processes.json"
+      ],
+      "details": {
+        "negative_zero_tests_rejected": true,
+        "negative_timeout_killed": true,
+        "orphan_cleanup_verified": true
+      }
+    }
+  ],
+  "start_time": "2026-09-12T03:21:10.857192+00:00",
+  "end_time": "2026-09-12T03:21:21.774462+00:00",
+  "duration_seconds": 10.907,
+  "artifacts": [
+    "/Users/lmhhh/Desktop/adaptive-vocabulary/artifacts/web-e2e/run_20260912_032110_f664bfd8/W00/W00-01/case.log",
+    "/Users/lmhhh/Desktop/adaptive-vocabulary/artifacts/web-e2e/run_20260912_032110_f664bfd8/W00/W00-01/screenshot.png",
+    "/Users/lmhhh/Desktop/adaptive-vocabulary/artifacts/web-e2e/run_20260912_032110_f664bfd8/W00/W00-01/trace.zip",
+    "/Users/lmhhh/Desktop/adaptive-vocabulary/artifacts/web-e2e/run_20260912_032110_f664bfd8/W00/W00-01/processes.json",
+    "/Users/lmhhh/Desktop/adaptive-vocabulary/artifacts/web-e2e/run_20260912_032110_f664bfd8/W00/W00-01/state-summary.json",
+    "/Users/lmhhh/Desktop/adaptive-vocabulary/artifacts/web-e2e/run_20260912_032110_f664bfd8/W00/W00-01/server/server.log",
+    "/Users/lmhhh/Desktop/adaptive-vocabulary/artifacts/web-e2e/run_20260912_032110_f664bfd8/W00/W00-02/case.log",
+    "/Users/lmhhh/Desktop/adaptive-vocabulary/artifacts/web-e2e/run_20260912_032110_f664bfd8/W00/W00-02/screenshot.png",
+    "/Users/lmhhh/Desktop/adaptive-vocabulary/artifacts/web-e2e/run_20260912_032110_f664bfd8/W00/W00-02/trace.zip",
+    "/Users/lmhhh/Desktop/adaptive-vocabulary/artifacts/web-e2e/run_20260912_032110_f664bfd8/W00/W00-02/processes.json",
+    "/Users/lmhhh/Desktop/adaptive-vocabulary/artifacts/web-e2e/run_20260912_032110_f664bfd8/W00/W00-02/state-summary.json",
+    "/Users/lmhhh/Desktop/adaptive-vocabulary/artifacts/web-e2e/run_20260912_032110_f664bfd8/W00/W00-02/server/server.log",
+    "/Users/lmhhh/Desktop/adaptive-vocabulary/artifacts/web-e2e/run_20260912_032110_f664bfd8/W00/W00-03/case.log",
+    "/Users/lmhhh/Desktop/adaptive-vocabulary/artifacts/web-e2e/run_20260912_032110_f664bfd8/W00/W00-03/screenshot.png",
+    "/Users/lmhhh/Desktop/adaptive-vocabulary/artifacts/web-e2e/run_20260912_032110_f664bfd8/W00/W00-03/trace.zip",
+    "/Users/lmhhh/Desktop/adaptive-vocabulary/artifacts/web-e2e/run_20260912_032110_f664bfd8/W00/W00-03/processes.json",
+    "/Users/lmhhh/Desktop/adaptive-vocabulary/artifacts/web-e2e/run_20260912_032110_f664bfd8/W00/W00-03/state-summary.json",
+    "/Users/lmhhh/Desktop/adaptive-vocabulary/artifacts/web-e2e/run_20260912_032110_f664bfd8/W00/W00-03/server/server.log",
+    "/Users/lmhhh/Desktop/adaptive-vocabulary/artifacts/web-e2e/run_20260912_032110_f664bfd8/W00/W00-04/case.log",
+    "/Users/lmhhh/Desktop/adaptive-vocabulary/artifacts/web-e2e/run_20260912_032110_f664bfd8/W00/W00-04/timeout_subcase.py",
+    "/Users/lmhhh/Desktop/adaptive-vocabulary/artifacts/web-e2e/run_20260912_032110_f664bfd8/W00/W00-04/timeout.log",
+    "/Users/lmhhh/Desktop/adaptive-vocabulary/artifacts/web-e2e/run_20260912_032110_f664bfd8/W00/W00-04/timeout_ctx.json",
+    "/Users/lmhhh/Desktop/adaptive-vocabulary/artifacts/web-e2e/run_20260912_032110_f664bfd8/W00/W00-04/orphan_subcase.py",
+    "/Users/lmhhh/Desktop/adaptive-vocabulary/artifacts/web-e2e/run_20260912_032110_f664bfd8/W00/W00-04/orphan.log",
+    "/Users/lmhhh/Desktop/adaptive-vocabulary/artifacts/web-e2e/run_20260912_032110_f664bfd8/W00/W00-04/ctx_orphan.json",
+    "/Users/lmhhh/Desktop/adaptive-vocabulary/artifacts/web-e2e/run_20260912_032110_f664bfd8/W00/W00-04/res_orphan.json",
+    "/Users/lmhhh/Desktop/adaptive-vocabulary/artifacts/web-e2e/run_20260912_032110_f664bfd8/W00/W00-04/processes.json"
+  ]
+}
