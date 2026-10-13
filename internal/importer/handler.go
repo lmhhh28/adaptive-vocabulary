@@ -61,8 +61,9 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("/static/import/", h.ServeStaticImport)
 
 	// Web UI
+	mux.HandleFunc("/imports", h.ServeImportsPage)
+	mux.HandleFunc("/imports/", h.ServeImportsPage)
 	mux.HandleFunc("GET /banks/{id}/import", h.ServeBankImportUI)
-	mux.HandleFunc("/imports/", h.ServeImportDetailUI)
 
 	// REST APIs
 	mux.HandleFunc("POST /api/v1/sources/{id}/imports", h.HandleSourceImports)
@@ -103,7 +104,32 @@ func (h *Handler) ServeStaticImport(w http.ResponseWriter, r *http.Request) {
 	_, _ = w.Write(content)
 }
 
+func (h *Handler) ServeImportsPage(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	distIndex := findWebPath("web/frontend/dist/index.html")
+	if content, err := os.ReadFile(distIndex); err == nil {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		w.Header().Set("Cache-Control", "no-store")
+		_, _ = w.Write(content)
+		return
+	}
+
+	h.ServeImportDetailUI(w, r)
+}
+
 func (h *Handler) ServeBankImportUI(w http.ResponseWriter, r *http.Request) {
+	distIndex := findWebPath("web/frontend/dist/index.html")
+	if content, err := os.ReadFile(distIndex); err == nil {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		w.Header().Set("Cache-Control", "no-store")
+		_, _ = w.Write(content)
+		return
+	}
+
 	bankID := r.PathValue("id")
 	if bankID == "" {
 		path := strings.TrimPrefix(r.URL.Path, "/banks/")
@@ -136,6 +162,14 @@ func (h *Handler) ServeBankImportUI(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) ServeImportDetailUI(w http.ResponseWriter, r *http.Request) {
+	distIndex := findWebPath("web/frontend/dist/index.html")
+	if content, err := os.ReadFile(distIndex); err == nil {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		w.Header().Set("Cache-Control", "no-store")
+		_, _ = w.Write(content)
+		return
+	}
+
 	importID := strings.TrimPrefix(r.URL.Path, "/imports/")
 	if importID == "" || strings.Contains(importID, "/") {
 		http.NotFound(w, r)
@@ -350,16 +384,32 @@ func (h *Handler) HandleBankImports(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) HandleImportItems(w http.ResponseWriter, r *http.Request) {
 	path := strings.TrimPrefix(r.URL.Path, "/api/v1/imports/")
 	parts := strings.Split(strings.Trim(path, "/"), "/")
+
+	if r.Method != http.MethodGet {
+		core.WriteJSONError(w, r, http.StatusMethodNotAllowed, "INVALID_REQUEST", "Method not allowed", nil)
+		return
+	}
+
+	if len(parts) == 1 && parts[0] != "" {
+		importID := parts[0]
+		job, err := h.service.GetImportJob(r.Context(), importID)
+		if err != nil {
+			h.writeError(w, r, err)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		w.Header().Set("Cache-Control", "no-store")
+		w.WriteHeader(http.StatusOK)
+		_ = json.NewEncoder(w).Encode(job)
+		return
+	}
+
 	if len(parts) != 2 || parts[1] != "items" {
 		core.WriteJSONError(w, r, http.StatusNotFound, "NOT_FOUND", "resource not found", nil)
 		return
 	}
 
 	importID := parts[0]
-	if r.Method != http.MethodGet {
-		core.WriteJSONError(w, r, http.StatusMethodNotAllowed, "INVALID_REQUEST", "Method not allowed", nil)
-		return
-	}
 
 	statusFilter := r.URL.Query().Get("status")
 	limitStr := r.URL.Query().Get("limit")

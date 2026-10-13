@@ -21,3 +21,6 @@ bin/
 coverage.out
 .tools/
 .cache/
+node_modules/
+dist/
+*.local

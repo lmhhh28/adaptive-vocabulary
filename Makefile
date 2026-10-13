@@ -28,6 +28,7 @@ check:
 	$(UV) run --directory worker --locked python dependency_check.py
 	$(UV) run --directory worker --locked python ../scripts/check_contracts.py
 	python3 scripts/tasks.py check
+	python3 scripts/web_tasks.py check
 	python3 scripts/freeze_design.py --check
 
 e2e-tools:
@@ -71,3 +72,23 @@ run-generation-lab: build build-e2e
 
 quality-live:
 	$(UV) run --directory worker --locked python -m avocab_worker.quality_benchmark --allow-paid --profile $(if $(PROFILE),$(PROFILE),config/production-profile.json)
+
+.PHONY: web-build web-run web-e2e web-tasks web-task check-web-plan
+web-build:
+	cd web/frontend && npm run build
+	$(MAKE) build
+
+web-run:
+	python3 scripts/web_runtime.py --module $(if $(MODULE),$(MODULE),W00) $(if $(DATA_DIR),--data-dir $(DATA_DIR),) $(if $(LISTEN),--listen $(LISTEN),)
+
+web-e2e:
+	$(UV) run --directory e2e --locked python web_runner.py $(if $(MODULE),$(MODULE),all)
+
+web-tasks:
+	python3 scripts/web_tasks.py list
+
+web-task:
+	python3 scripts/web_tasks.py show $(ID)
+
+check-web-plan:
+	python3 scripts/web_tasks.py check

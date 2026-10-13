@@ -1,5 +1,15 @@
 # 文档索引
 
+## Web 前端交互设计
+
+| 文档 | 用途 |
+| --- | --- |
+| [Ant Design 前端交互设计](11-web-frontend-design.md) | 2026-09-11 新前端方向；练习/考试流程、自动前进、错误停留、恢复、视觉规范、接口缺口与验收 |
+| [Web 独立模块实施计划](12-web-implementation-plan.md) | W00–W08 九个模块、依赖、文件所有权、真实启动与45个必测E2E场景 |
+| [Web 模块接口与验收契约](13-web-api-and-e2e-contract.md) | 恢复/历史/展示审计/管理发现增量API、outbox、进程隔离与证据标准 |
+| [Web 机器任务清单](../config/web-implementation-plan-v1.json) | 可用 make web-tasks、make web-task ID=Wxx、make check-web-plan 查询和校验 |
+| [SurveyKing 答题交互调研](research/2026-09-11-surveyking-interaction.md) | 官方证据、用户参考图分析、可借鉴行为与本项目差异 |
+
 ## 跨平台前端开发
 
 | 文档 | 用途 |

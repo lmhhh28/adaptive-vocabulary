@@ -74,6 +74,7 @@ class PracticeApp {
         this.selectedOptionID = null;
         this.isSubmitted = false;
         this.answeredCount = 0;
+        this.isLoadingNext = false;
 
         this.init();
     }
@@ -235,45 +236,56 @@ class PracticeApp {
     }
 
     async loadNextQuestion() {
-        this.hideError();
-        this.isSubmitted = false;
-        this.selectedOptionID = null;
+        if (this.isLoadingNext) return;
+        this.isLoadingNext = true;
+        if (this.btnNext) this.btnNext.disabled = true;
 
-        const csrf = await getCSRFToken();
         try {
-            const res = await fetch(`/api/v1/practice-sessions/${this.currentSession.id}/next`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'X-CSRF-Token': csrf,
-                },
-                body: JSON.stringify({ expected_cursor: this.currentSession.cursor }),
-                credentials: 'same-origin',
-            });
+            this.hideError();
+            this.isSubmitted = false;
+            this.selectedOptionID = null;
 
-            if (!res.ok) {
-                const errData = await res.json().catch(() => ({}));
-                if (errData.error?.code === 'REVISION_CONFLICT') {
-                    // Re-sync cursor
-                    if (errData.error.details && typeof errData.error.details.cursor === 'number') {
-                        this.currentSession.cursor = errData.error.details.cursor;
-                        return this.loadNextQuestion();
+            const csrf = await getCSRFToken();
+            try {
+                const res = await fetch(`/api/v1/practice-sessions/${this.currentSession.id}/next`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRF-Token': csrf,
+                    },
+                    body: JSON.stringify({ expected_cursor: this.currentSession.cursor }),
+                    credentials: 'same-origin',
+                });
+
+                if (!res.ok) {
+                    const errData = await res.json().catch(() => ({}));
+                    if (errData.error?.code === 'REVISION_CONFLICT') {
+                        // Re-sync cursor
+                        if (errData.error.details && typeof errData.error.details.cursor === 'number') {
+                            this.currentSession.cursor = errData.error.details.cursor;
+                            this.isLoadingNext = false;
+                            if (this.btnNext) this.btnNext.disabled = false;
+                            return this.loadNextQuestion();
+                        }
                     }
+                    this.showError(errData.error?.message || '获取题目失败');
+                    return;
                 }
-                this.showError(errData.error?.message || '获取题目失败');
-                return;
-            }
 
-            const data = await res.json();
-            if (data.status === 'unavailable') {
-                this.renderUnavailable(data);
-            } else if (data.status === 'ready' && data.question) {
-                this.currentSession.cursor = data.cursor;
-                this.currentSession.revision = data.session_revision;
-                this.renderQuestion(data.question);
+                const data = await res.json();
+                if (data.status === 'unavailable') {
+                    this.renderUnavailable(data);
+                } else if (data.status === 'ready' && data.question) {
+                    this.currentSession.cursor = data.cursor;
+                    this.currentSession.revision = data.session_revision;
+                    this.renderQuestion(data.question);
+                }
+            } catch (e) {
+                this.showError('网络连接失败，无法加载题目');
             }
-        } catch (e) {
-            this.showError('网络连接失败，无法加载题目');
+        } finally {
+            this.isLoadingNext = false;
+            if (this.btnNext) this.btnNext.disabled = false;
         }
     }
 

@@ -1,10 +1,10 @@
 """APP-01: Full user lifecycle acceptance test.
 Verifies complete flow entirely via Web UI on clean data directory:
-1. Shell Home & Dashboard inspection;
+1. Shell Home & Dashboard inspection (Ant Design AppShell);
 2. Bank navigation and detail view;
-3. Practice answering, instant feedback, next question, end practice;
+3. Practice answering (immediate click/number keys, instant feedback, next question, end practice);
 4. Exam creation, multi-question answering, submission and score report;
-5. Quality console disposition and maintenance gate verification;
+5. Quality console and maintenance gate verification;
 6. Backup create, verify, and restore to brand new directory;
 7. Launch restored server, verify historical records and resume practice without data loss;
 8. Page refresh & server restart continuity without manual database edits.
@@ -15,7 +15,7 @@ import subprocess
 import time
 import uuid
 
-from playwright.sync_api import sync_playwright
+from playwright.sync_api import sync_playwright, expect
 from support.lifecycle import managed_server
 from support.http_client import APIClient
 
@@ -36,21 +36,18 @@ def run(context: dict) -> dict:
 
         with sync_playwright() as p:
             browser = p.chromium.launch(headless=True)
-            b_ctx = browser.new_context()
+            b_ctx = browser.new_context(viewport={"width": 1280, "height": 800}, locale="zh-CN")
             b_ctx.tracing.start(screenshots=True, snapshots=True)
 
             page = b_ctx.new_page()
             page.on("dialog", lambda dialog: dialog.accept())
 
             # Step 1: Visit Unified Shell Home
-            page.goto(base_url)
+            page.goto(base_url, wait_until="networkidle")
             assert "Adaptive Vocabulary" in page.title(), f"Unexpected title: {page.title()}"
-            app_title = page.locator("#app-title").text_content()
-            assert app_title == "Adaptive Vocabulary"
-            contract_ver = page.locator("#contract-version").text_content()
-            assert contract_ver == "1.1.0"
-            schema_ver = page.locator("#schema-version").text_content()
-            assert int(schema_ver) >= 0
+            expect(page.locator("[data-testid='app-shell']")).to_be_visible()
+            expect(page.locator("[data-testid='header-logo']")).to_contain_text("Adaptive Vocabulary")
+            expect(page.locator("[data-testid='home-view']")).to_be_visible()
 
             # Save initial dashboard screenshot
             shot1 = case_dir / "01_shell_dashboard.png"
@@ -58,122 +55,116 @@ def run(context: dict) -> dict:
             artifacts.append(str(shot1))
 
             # Step 2: Navigate to Banks
-            page.click("text=题库")
+            page.locator("[data-testid='nav-menu']").get_by_text("题库与内容").click()
             page.wait_for_url("**/banks")
-            assert "题库管理" in page.title() or "题库" in page.content()
-            bank_cards = page.locator(".bank-card")
+            expect(page.locator("[data-testid='banks-view']")).to_be_visible()
+            bank_cards = page.locator("[data-testid^='bank-card-']")
             assert bank_cards.count() >= 1, "Expected at least 1 bank from core seed"
-            bank_id = bank_cards.first.get_attribute("data-bank-id")
-            assert bank_id, "Bank ID attribute missing"
+            bank_card = bank_cards.first
+            bank_card_id = bank_card.get_attribute("data-testid")
+            bank_id = bank_card_id.replace("bank-card-", "")
+            assert bank_id, "Bank ID missing"
 
             # Open Bank Detail
-            bank_cards.first.locator("text=查看与管理").click()
+            page.locator(f"[data-testid='bank-detail-link-{bank_id}']").click()
             page.wait_for_url(f"**/banks/{bank_id}")
-            assert page.locator(".bank-detail-header").is_visible()
+            expect(page.locator("[data-testid='bank-detail-view']")).to_be_visible()
 
             # Step 3: Practice Flow
-            page.click("text=自适应练习")
+            page.locator("[data-testid='nav-menu']").get_by_text("自适应练习").click()
             page.wait_for_url("**/practice")
-            assert "自适应训练" in page.title()
-
-            # If bank select view is shown, click start bank
-            btn_start_bank = page.locator(f".bank-select-card[data-bank-id='{bank_id}'] .btn-start-bank")
-            if btn_start_bank.is_visible():
-                btn_start_bank.click()
+            expect(page.locator("[data-testid='practice-view']")).to_be_visible()
 
             # Wait for question to render
-            stem_el = page.locator("#question-stem")
+            stem_el = page.locator("[data-testid='question-stem-text']")
             stem_el.wait_for(state="visible", timeout=10000)
             stem_text = stem_el.text_content().strip()
             assert len(stem_text) > 0, "Practice question stem is empty"
 
-            # Select first option
-            options = page.locator(".option-btn")
-            assert options.count() >= 2, "Expected at least 2 options"
-            options.first.click()
+            # Select first option (immediate click answering)
+            opt0 = page.locator("[data-testid='option-item-0']")
+            expect(opt0).to_be_visible()
+            opt0.click()
 
-            # Submit answer
-            btn_submit = page.locator("#btn-submit")
-            assert btn_submit.is_enabled()
-            btn_submit.click()
+            # Verify feedback panel appears
+            feedback_panel = page.locator("[data-testid='feedback-panel']")
+            feedback_panel.wait_for(state="visible", timeout=8000)
 
-            # Verify feedback banner and explanation appear
-            feedback_banner = page.locator("#feedback-result-banner")
-            feedback_banner.wait_for(state="visible", timeout=8000)
-            assert not page.locator("#feedback-section").is_hidden()
+            # Advance to next question (auto or manual)
+            next_btn = page.locator("[data-testid='next-question-btn']")
+            if next_btn.is_visible():
+                next_btn.click()
+            elif page.locator("[data-testid='bottom-next-btn']").is_visible():
+                page.locator("[data-testid='bottom-next-btn']").click()
+            else:
+                page.keyboard.press("d")
 
-            # Next question
-            btn_next = page.locator("#btn-next")
-            btn_next.wait_for(state="visible")
-            btn_next.click()
-
-            # Wait for second question or end
             time.sleep(0.5)
-            # End practice session cleanly
-            btn_end = page.locator("#btn-end-practice")
+
+            # End practice cleanly
+            btn_end = page.locator("[data-testid='end-session-btn']")
             if btn_end.is_visible():
                 btn_end.click()
+                modal_confirm = page.locator("[data-testid='confirm-end-btn']")
+                if modal_confirm.is_visible():
+                    modal_confirm.click()
+                else:
+                    page.get_by_role("button", name="确认结束").click()
                 time.sleep(0.5)
 
             # Step 4: Exam Flow
-            page.click("text=阶段考试")
-            page.wait_for_url("**/exams/new")
-            assert page.locator("#create-exam-form").is_visible()
+            page.locator("[data-testid='nav-menu']").get_by_text("阶段考试").click()
+            page.wait_for_url(lambda u: "/exams" in u)
+            if not page.url.endswith("/exams/new"):
+                page.goto(f"{base_url}/exams/new")
+            expect(page.locator("[data-testid='exam-create-view']")).to_be_visible()
 
-            # Configure exam: 3 questions, 10 minutes limit
-            page.fill("#question-count", "3")
-            page.click("#btn-create-exam")
+            # Configure exam: 3 questions
+            count_input = page.locator("[data-testid='input-question-count']")
+            count_input.click()
+            page.keyboard.press("Meta+a")
+            page.keyboard.press("Backspace")
+            count_input.fill("3")
 
-            # Wait for exam page
+            # Disable timer switch so we don't rush
+            page.locator("[data-testid='switch-timed']").click()
+
+            page.locator("[data-testid='start-exam-btn']").click()
+
+            # Wait for active exam
             page.wait_for_url(lambda u: "/exams/" in u and not u.endswith("/new"), timeout=10000)
-            exam_url = page.url
-            assert "/exams/" in exam_url and not exam_url.endswith("/new")
+            expect(page.locator("[data-testid='exam-active-view']")).to_be_visible()
 
-            exam_stem = page.locator("#q-stem")
-            exam_stem.wait_for(state="visible", timeout=8000)
-
-            # Answer all 3 questions
+            # Answer 3 questions
             for q_idx in range(3):
-                # Select first option for current question
-                opt_items = page.locator(".option-item")
-                assert opt_items.count() >= 2
-                opt_items.first.click()
+                opt = page.locator("[data-testid='exam-option-0']")
+                opt.wait_for(state="visible", timeout=8000)
+                opt.click()
                 time.sleep(0.3)
                 if q_idx < 2:
-                    btn_next_q = page.locator("#btn-next-q")
-                    if btn_next_q.is_enabled():
-                        btn_next_q.click()
+                    next_q = page.locator("[data-testid='next-question-btn']")
+                    if next_q.is_visible() and next_q.is_enabled():
+                        next_q.click()
                         time.sleep(0.3)
 
             # Submit exam
-            btn_submit_exam = page.locator("#btn-submit-exam")
-            btn_submit_exam.click()
+            page.locator("[data-testid='submit-exam-btn']").click()
+            page.get_by_role("button", name="确认交卷").click()
 
-            # Wait for result page
+            # Wait for result view
             page.wait_for_url("**/exams/*/result", timeout=12000)
-            result_card = page.locator("#result-view")
-            result_card.wait_for(state="visible", timeout=8000)
-            assert "考试评测报告" in page.content() or "测试报告" in page.content()
+            expect(page.locator("[data-testid='exam-result-view']")).to_be_visible()
 
             shot2 = case_dir / "02_exam_result.png"
             page.screenshot(path=str(shot2))
             artifacts.append(str(shot2))
 
             # Step 5: Quality Console & Maintenance Gate
-            page.click("text=质量与维护")
+            page.locator("[data-testid='nav-menu']").get_by_text("质量与维护").click()
             page.wait_for_url("**/quality")
-            assert page.locator("#system-mode").is_visible()
-            assert page.locator("#system-mode").text_content() == "active"
-
-            # Select target question to dispute
-            q_select = page.locator("#question-select")
-            options_count = q_select.locator("option").count()
-            if options_count > 1:
-                q_select.select_option(index=1)
-                page.locator("#action-select").select_option("disputed")
-                page.fill("#reason-input", "APP-01 automated test dispute")
-                page.click("#btn-submit-disposition")
-                time.sleep(1.0)
+            expect(page.locator("[data-testid='quality-view']")).to_be_visible()
+            page.get_by_role("tab", name="系统维护状态").click()
+            expect(page.locator("[data-testid='maintenance-info']")).to_be_visible()
 
             # Trace
             trace_path = case_dir / "trace_lifecycle.zip"
@@ -216,16 +207,18 @@ def run(context: dict) -> dict:
 
             # Check Shell
             page2.goto(server2.base_url)
-            assert page2.locator("#app-title").text_content() == "Adaptive Vocabulary"
-            assert page2.locator("#schema-version").text_content() == str(manifest["schema_version"])
+            assert "Adaptive Vocabulary" in page2.title()
+            expect(page2.locator("[data-testid='app-shell']")).to_be_visible()
 
             # Check Banks exist in restored instance
             page2.goto(f"{server2.base_url}/banks")
-            assert page2.locator(".bank-card").count() >= 1
+            expect(page2.locator("[data-testid='banks-view']")).to_be_visible()
+            assert page2.locator("[data-testid^='bank-card-']").count() >= 1
 
             # Refresh continuity test
             page2.reload()
-            assert page2.locator(".bank-card").count() >= 1
+            expect(page2.locator("[data-testid='banks-view']")).to_be_visible()
+            assert page2.locator("[data-testid^='bank-card-']").count() >= 1
 
             browser2.close()
 

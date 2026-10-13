@@ -3,6 +3,7 @@ package importer
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"strings"
 	"testing"
@@ -563,6 +564,138 @@ func TestIdempotencyErrorCausesRollback(t *testing.T) {
 	_ = db.QueryRow("SELECT count(*) FROM import_job WHERE target_id = ?", newBank.ID).Scan(&count)
 	if count != 0 {
 		t.Errorf("expected 0 import_job records after rollback, got %d", count)
+	}
+}
+
+func TestParseJSON(t *testing.T) {
+	// 1. Array of strings
+	jsonArr := []byte(`["river", "desert", "bank"]`)
+	entries, err := ParseRawInput(jsonArr, "words.json")
+	if err != nil {
+		t.Fatalf("parse json array failed: %v", err)
+	}
+	if len(entries) != 3 {
+		t.Fatalf("expected 3 entries, got %d", len(entries))
+	}
+	if entries[0].NormalizedWord != "river" || entries[1].NormalizedWord != "desert" || entries[2].NormalizedWord != "bank" {
+		t.Errorf("unexpected normalized words: %+v", entries)
+	}
+
+	// 2. Object with words array
+	jsonObj := []byte(`{"words": ["apple", "cloud"]}`)
+	entriesObj, err := ParseRawInput(jsonObj, "words.json")
+	if err != nil {
+		t.Fatalf("parse json object failed: %v", err)
+	}
+	if len(entriesObj) != 2 || entriesObj[0].NormalizedWord != "apple" || entriesObj[1].NormalizedWord != "cloud" {
+		t.Errorf("unexpected entries from object: %+v", entriesObj)
+	}
+
+	// 3. Array of objects
+	jsonObjs := []byte(`[{"word": "mountain"}, {"lexeme": "window", "sense_id": "00000000-0000-4000-8000-000000000103"}]`)
+	entriesObjs, err := ParseRawInput(jsonObjs, "words.json")
+	if err != nil {
+		t.Fatalf("parse json object array failed: %v", err)
+	}
+	if len(entriesObjs) != 2 || entriesObjs[0].NormalizedWord != "mountain" || entriesObjs[1].NormalizedWord != "window" {
+		t.Errorf("unexpected entries from obj array: %+v", entriesObjs)
+	}
+	if entriesObjs[1].SpecifiedSenseID == nil || *entriesObjs[1].SpecifiedSenseID != "00000000-0000-4000-8000-000000000103" {
+		t.Errorf("expected specified sense id for window, got %+v", entriesObjs[1])
+	}
+
+	// 4. Invalid JSON
+	_, err = ParseRawInput([]byte(`{not valid json}`), "test.json")
+	if err == nil {
+		t.Fatal("expected error for invalid json, got nil")
+	}
+
+	// 5. Overlimit JSON
+	var bigList []string
+	for i := 0; i < 5001; i++ {
+		bigList = append(bigList, "word")
+	}
+	bigJSON, _ := json.Marshal(bigList)
+	_, err = ParseRawInput(bigJSON, "big.json")
+	if !errors.Is(err, ErrTooManyRows) {
+		t.Fatalf("expected ErrTooManyRows for >5000 json rows, got %v", err)
+	}
+}
+
+func TestGetImportJobAndMultiSenseAdopt(t *testing.T) {
+	db := setupTestDB(t)
+	defer db.Close()
+
+	ctx := context.Background()
+	bankSvc := bank.NewService(db)
+	newBank, err := bankSvc.CreateBank(ctx, "MultiSense Bank", "")
+	if err != nil {
+		t.Fatalf("create bank: %v", err)
+	}
+
+	importerSvc := NewService(db)
+	parsed, err := ParseRawInput([]byte(`["bank", "river"]`), "words.json")
+	if err != nil {
+		t.Fatalf("parse words.json: %v", err)
+	}
+
+	job, err := importerSvc.ImportBankVocabulary(ctx, newBank.ID, parsed, "v1", -1, "", "")
+	if err != nil {
+		t.Fatalf("import words: %v", err)
+	}
+
+	// Fetch job via GetImportJob
+	fetchedJob, err := importerSvc.GetImportJob(ctx, job.ID)
+	if err != nil {
+		t.Fatalf("get import job: %v", err)
+	}
+	if fetchedJob.TotalCount != 2 || fetchedJob.AmbiguousCount != 1 || fetchedJob.ResolvedCount != 1 {
+		t.Fatalf("unexpected fetched job counts: %+v", fetchedJob)
+	}
+
+	// Find ambiguous item "bank"
+	itemsResp, err := importerSvc.GetImportItems(ctx, job.ID, "ambiguous", 10, 0)
+	if err != nil || len(itemsResp.Items) != 1 {
+		t.Fatalf("expected 1 ambiguous item, got %d, err: %v", len(itemsResp.Items), err)
+	}
+	bankItem := itemsResp.Items[0]
+	if len(bankItem.Candidates) < 2 {
+		t.Fatalf("expected at least 2 candidates for bank, got %d", len(bankItem.Candidates))
+	}
+
+	// Adopt BOTH candidate senses!
+	s1 := bankItem.Candidates[0].SenseID
+	s2 := bankItem.Candidates[1].SenseID
+
+	updatedItem, err := importerSvc.ResolveImportItem(ctx, bankItem.ID, ResolveItemRequest{
+		Action:           "adopt",
+		SenseRefs:        []string{s1, s2},
+		Reason:           "Adopt both financial bank and river bank",
+		ExpectedRevision: bankItem.Revision,
+	}, "", "")
+	if err != nil {
+		t.Fatalf("resolve multi-adopt error: %v", err)
+	}
+	if updatedItem.Status != "resolved" || len(updatedItem.ResolvedSenseIDs) != 2 {
+		t.Fatalf("expected resolved with 2 senses, got: %+v", updatedItem)
+	}
+
+	// Check updated job counts
+	refetchedJob, err := importerSvc.GetImportJob(ctx, job.ID)
+	if err != nil {
+		t.Fatalf("refetch import job: %v", err)
+	}
+	if refetchedJob.AmbiguousCount != 0 || refetchedJob.ResolvedCount != 2 {
+		t.Fatalf("expected ambiguous=0, resolved=2, got: %+v", refetchedJob)
+	}
+
+	// Check bank detail: river has 1 sense, bank has 2 senses => total 3 senses in bank!
+	bDetail, err := bankSvc.GetBank(ctx, newBank.ID)
+	if err != nil {
+		t.Fatalf("get bank: %v", err)
+	}
+	if bDetail.MemberCount != 3 {
+		t.Fatalf("expected 3 bank members, got %d", bDetail.MemberCount)
 	}
 }
 

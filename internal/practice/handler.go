@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"adaptive-vocabulary/internal/core"
@@ -140,6 +141,14 @@ func (h *Handler) ServeStaticPractice(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) ServePracticePage(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	distIndex := findWebPath("web/frontend/dist/index.html")
+	if content, err := os.ReadFile(distIndex); err == nil {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		w.Header().Set("Cache-Control", "no-store")
+		_, _ = w.Write(content)
 		return
 	}
 
@@ -359,34 +368,61 @@ func (h *Handler) HandlePracticeSessionSubroutes(w http.ResponseWriter, r *http.
 		return
 	}
 
-	subaction := parts[1]
-	switch subaction {
-	case "next":
-		if r.Method == http.MethodPost {
-			h.handleNextQuestion(w, r, sessionID)
+	if len(parts) == 2 {
+		subaction := parts[1]
+		switch subaction {
+		case "next":
+			if r.Method == http.MethodPost {
+				h.handleNextQuestion(w, r, sessionID)
+				return
+			}
+		case "attempts":
+			if r.Method == http.MethodPost {
+				h.handleSubmitAttempt(w, r, sessionID)
+				return
+			}
+		case "end":
+			if r.Method == http.MethodPost {
+				h.handleEndSession(w, r, sessionID, "ended")
+				return
+			}
+		case "abandon":
+			if r.Method == http.MethodPost {
+				h.handleEndSession(w, r, sessionID, "abandoned")
+				return
+			}
+		case "answer-records":
+			if r.Method == http.MethodGet {
+				h.handleGetAnswerRecords(w, r, sessionID)
+				return
+			}
+		case "feedback-views":
+			if r.Method == http.MethodPost {
+				h.handleRecordFeedbackView(w, r, sessionID)
+				return
+			}
+		default:
+			http.NotFound(w, r)
 			return
 		}
-	case "attempts":
-		if r.Method == http.MethodPost {
-			h.handleSubmitAttempt(w, r, sessionID)
+		core.WriteJSONError(w, r, http.StatusMethodNotAllowed, "INVALID_REQUEST", "Method not allowed", nil)
+		return
+	}
+
+	if len(parts) == 3 {
+		if parts[1] == "answered-questions" {
+			if r.Method == http.MethodGet {
+				h.handleGetAnsweredQuestion(w, r, sessionID, parts[2])
+				return
+			}
+			core.WriteJSONError(w, r, http.StatusMethodNotAllowed, "INVALID_REQUEST", "Method not allowed", nil)
 			return
 		}
-	case "end":
-		if r.Method == http.MethodPost {
-			h.handleEndSession(w, r, sessionID, "ended")
-			return
-		}
-	case "abandon":
-		if r.Method == http.MethodPost {
-			h.handleEndSession(w, r, sessionID, "abandoned")
-			return
-		}
-	default:
 		http.NotFound(w, r)
 		return
 	}
 
-	core.WriteJSONError(w, r, http.StatusMethodNotAllowed, "INVALID_REQUEST", "Method not allowed", nil)
+	http.NotFound(w, r)
 }
 
 func (h *Handler) handleGetSession(w http.ResponseWriter, r *http.Request, sessionID string) {
@@ -421,10 +457,18 @@ func (h *Handler) handleGetSession(w http.ResponseWriter, r *http.Request, sessi
 		sessionMap["normal_position"] = nil
 	}
 
+	if detail.RecentRecords == nil {
+		detail.RecentRecords = []AnswerRecord{}
+	}
+
 	resp := map[string]any{
-		"session":          sessionMap,
-		"current_question": detail.CurrentQuestion,
-		"last_feedback":    detail.LastFeedback,
+		"session":                sessionMap,
+		"current_question":       detail.CurrentQuestion,
+		"last_feedback":          detail.LastFeedback,
+		"last_answered_question": detail.LastAnsweredQuestion,
+		"summary":                detail.Summary,
+		"recent_records":         detail.RecentRecords,
+		"has_older_records":      detail.HasOlderRecords,
 	}
 
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
@@ -649,4 +693,156 @@ func (h *Handler) handleEndSession(w http.ResponseWriter, r *http.Request, sessi
 	}
 	w.WriteHeader(http.StatusOK)
 	_ = json.NewEncoder(w).Encode(resp)
+}
+
+func (h *Handler) handleGetAnswerRecords(w http.ResponseWriter, r *http.Request, sessionID string) {
+	var beforeOrdinal *int64
+	if r.URL.Query().Has("before_ordinal") {
+		val, err := strconv.ParseInt(r.URL.Query().Get("before_ordinal"), 10, 64)
+		if err != nil || val < 0 {
+			core.WriteJSONError(w, r, http.StatusBadRequest, "INVALID_REQUEST", "before_ordinal must be a non-negative integer", nil)
+			return
+		}
+		beforeOrdinal = &val
+	}
+
+	limit := 30
+	if r.URL.Query().Has("limit") {
+		val, err := strconv.Atoi(r.URL.Query().Get("limit"))
+		if err != nil || val < 1 || val > 100 {
+			core.WriteJSONError(w, r, http.StatusBadRequest, "INVALID_REQUEST", "limit must be between 1 and 100", nil)
+			return
+		}
+		limit = val
+	}
+
+	res, err := h.service.GetAnswerRecords(r.Context(), sessionID, beforeOrdinal, limit)
+	if errors.Is(err, ErrSessionNotFound) {
+		core.WriteJSONError(w, r, http.StatusNotFound, "NOT_FOUND", "会话不存在", nil)
+		return
+	}
+	if err != nil {
+		core.WriteJSONError(w, r, http.StatusInternalServerError, "INTERNAL_ERROR", err.Error(), nil)
+		return
+	}
+
+	if res.Items == nil {
+		res.Items = []AnswerRecord{}
+	}
+
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-store")
+	w.WriteHeader(http.StatusOK)
+	_ = json.NewEncoder(w).Encode(res)
+}
+
+func (h *Handler) handleGetAnsweredQuestion(w http.ResponseWriter, r *http.Request, sessionID string, ordinalStr string) {
+	ordinal, err := strconv.ParseInt(ordinalStr, 10, 64)
+	if err != nil || ordinal < 0 {
+		core.WriteJSONError(w, r, http.StatusNotFound, "NOT_FOUND", "题目未作答或不存在", nil)
+		return
+	}
+
+	ans, err := h.service.GetAnsweredQuestion(r.Context(), sessionID, ordinal)
+	if errors.Is(err, ErrSessionNotFound) {
+		core.WriteJSONError(w, r, http.StatusNotFound, "NOT_FOUND", "会话不存在", nil)
+		return
+	}
+	var activeErr *ActiveSessionConflictError
+	if errors.As(err, &activeErr) {
+		details := map[string]any{
+			"session_id":   activeErr.ActiveSession.ID,
+			"session_kind": activeErr.ActiveSession.Kind,
+		}
+		core.WriteJSONError(w, r, http.StatusConflict, "SESSION_ACTIVE", "另有活动会话正在进行，禁止跨会话读取答案正文", details)
+		return
+	}
+	if errors.Is(err, ErrNotAnswered) || errors.Is(err, ErrInstanceNotFound) {
+		core.WriteJSONError(w, r, http.StatusNotFound, "NOT_FOUND", "题目未作答或不存在", nil)
+		return
+	}
+	if err != nil {
+		core.WriteJSONError(w, r, http.StatusInternalServerError, "INTERNAL_ERROR", err.Error(), nil)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-store")
+	w.WriteHeader(http.StatusOK)
+	_ = json.NewEncoder(w).Encode(ans)
+}
+
+func (h *Handler) handleRecordFeedbackView(w http.ResponseWriter, r *http.Request, sessionID string) {
+	idempotencyKey := r.Header.Get("Idempotency-Key")
+
+	bodyBytes, err := io.ReadAll(r.Body)
+	if err != nil {
+		core.WriteJSONError(w, r, http.StatusBadRequest, "INVALID_REQUEST", "Failed to read request body", nil)
+		return
+	}
+
+	digest, err := core.ComputeRequestDigest(bodyBytes)
+	if err != nil {
+		core.WriteJSONError(w, r, http.StatusBadRequest, "INVALID_REQUEST", "Invalid JSON payload", nil)
+		return
+	}
+
+	var req FeedbackViewRequest
+	if err := json.Unmarshal(bodyBytes, &req); err != nil {
+		core.WriteJSONError(w, r, http.StatusBadRequest, "INVALID_REQUEST", "Invalid JSON payload", nil)
+		return
+	}
+
+	if req.ClientEventID == "" || req.InstanceID == "" {
+		core.WriteJSONError(w, r, http.StatusBadRequest, "INVALID_REQUEST", "client_event_id and instance_id are required", nil)
+		return
+	}
+	if req.Presentation != "history" && req.Presentation != "restored_feedback" {
+		core.WriteJSONError(w, r, http.StatusBadRequest, "INVALID_REQUEST", "presentation must be 'history' or 'restored_feedback'", nil)
+		return
+	}
+
+	if idempotencyKey == "" {
+		idempotencyKey = req.ClientEventID
+	}
+
+	res, isReplayed, err := h.service.RecordFeedbackView(r.Context(), sessionID, req, idempotencyKey, digest)
+	if err != nil {
+		if errors.Is(err, ErrMaintenance) {
+			core.WriteJSONError(w, r, http.StatusServiceUnavailable, "MAINTENANCE", "系统维护中", nil)
+			return
+		}
+		if errors.Is(err, core.ErrIdempotencyConflict) {
+			core.WriteJSONError(w, r, http.StatusConflict, "IDEMPOTENCY_CONFLICT", "幂等键请求摘要冲突", nil)
+			return
+		}
+		if errors.Is(err, ErrSessionNotFound) {
+			core.WriteJSONError(w, r, http.StatusNotFound, "NOT_FOUND", "会话不存在", nil)
+			return
+		}
+		if errors.Is(err, ErrInstanceNotFound) {
+			core.WriteJSONError(w, r, http.StatusNotFound, "NOT_FOUND", "题目实例不存在", nil)
+			return
+		}
+		if errors.Is(err, ErrNotAnswered) {
+			core.WriteJSONError(w, r, http.StatusBadRequest, "INVALID_REQUEST", "该题目尚未作答或不存在已接受作答记录", nil)
+			return
+		}
+		if errors.Is(err, ErrInvalidRequest) {
+			core.WriteJSONError(w, r, http.StatusBadRequest, "INVALID_REQUEST", "请求参数无效", nil)
+			return
+		}
+		core.WriteJSONError(w, r, http.StatusInternalServerError, "INTERNAL_ERROR", err.Error(), nil)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-store")
+	if isReplayed {
+		w.Header().Set("Idempotent-Replayed", "true")
+		w.WriteHeader(http.StatusOK)
+	} else {
+		w.WriteHeader(http.StatusCreated)
+	}
+	_ = json.NewEncoder(w).Encode(res)
 }

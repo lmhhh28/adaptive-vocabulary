@@ -2,8 +2,10 @@ package generation
 
 import (
 	"database/sql"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"html/template"
 	"io"
 	"net/http"
@@ -73,6 +75,7 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
 
 	// Public generation API endpoints
 	mux.HandleFunc("POST /api/v1/banks/{id}/generation-jobs", h.HandleCreateBankJob)
+	mux.HandleFunc("GET /api/v1/generation-jobs", h.HandleListJobs)
 	mux.HandleFunc("GET /api/v1/generation-jobs/{id}", h.HandleGetJob)
 	mux.HandleFunc("GET /api/v1/question-candidates/{id}", h.HandleGetCandidate)
 	mux.HandleFunc("GET /api/v1/quality-findings", h.HandleListQualityFindings)
@@ -121,6 +124,14 @@ func (h *Handler) ServeStaticGeneration(w http.ResponseWriter, r *http.Request) 
 }
 
 func (h *Handler) ServeGenerationUI(w http.ResponseWriter, r *http.Request) {
+	distIndex := findWebPath("web/frontend/dist/index.html")
+	if content, err := os.ReadFile(distIndex); err == nil {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		w.Header().Set("Cache-Control", "no-store")
+		_, _ = w.Write(content)
+		return
+	}
+
 	tmplPath := findWebPath("web/templates/generation/index.html")
 	tmpl, err := template.ParseFiles(tmplPath)
 	if err != nil {
@@ -577,27 +588,139 @@ func (h *Handler) HandleGetCandidate(w http.ResponseWriter, r *http.Request) {
 	_ = json.NewEncoder(w).Encode(cand)
 }
 
-func (h *Handler) HandleListQualityFindings(w http.ResponseWriter, r *http.Request) {
-	jobID := r.URL.Query().Get("job_id")
-	candidateID := r.URL.Query().Get("candidate_id")
-	status := r.URL.Query().Get("status")
-	limitStr := r.URL.Query().Get("limit")
-	limit := 50
-	if limitStr != "" {
-		if l, err := strconv.Atoi(limitStr); err == nil {
-			limit = l
-		}
+func encodeCursor(createdAt int64, id string) string {
+	raw := fmt.Sprintf("%d:%s", createdAt, id)
+	return base64.URLEncoding.EncodeToString([]byte(raw))
+}
+
+func decodeCursor(cursor string) (int64, string, error) {
+	decoded, err := base64.URLEncoding.DecodeString(cursor)
+	if err != nil {
+		return 0, "", errors.New("invalid base64")
+	}
+	parts := strings.SplitN(string(decoded), ":", 2)
+	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
+		return 0, "", errors.New("invalid cursor format")
+	}
+	createdAt, err := strconv.ParseInt(parts[0], 10, 64)
+	if err != nil || createdAt < 0 {
+		return 0, "", errors.New("invalid timestamp in cursor")
+	}
+	return createdAt, parts[1], nil
+}
+
+func (h *Handler) HandleListJobs(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		core.WriteJSONError(w, r, http.StatusMethodNotAllowed, "INVALID_REQUEST", "Method not allowed", nil)
+		return
 	}
 
-	res, err := h.service.ListQualityFindings(r.Context(), jobID, candidateID, status, limit)
+	bankID := r.URL.Query().Get("bank_id")
+	cursorParam := r.URL.Query().Get("cursor")
+	limitParam := r.URL.Query().Get("limit")
+
+	limit := 30
+	if limitParam != "" {
+		l, err := strconv.Atoi(limitParam)
+		if err != nil || l <= 0 || l > 100 {
+			core.WriteJSONError(w, r, http.StatusBadRequest, "INVALID_REQUEST", "Limit must be between 1 and 100", nil)
+			return
+		}
+		limit = l
+	}
+
+	var afterCreatedAt int64
+	var afterID string
+	if cursorParam != "" {
+		ca, id, err := decodeCursor(cursorParam)
+		if err != nil {
+			core.WriteJSONError(w, r, http.StatusBadRequest, "INVALID_REQUEST", "Invalid cursor", nil)
+			return
+		}
+		afterCreatedAt = ca
+		afterID = id
+	}
+
+	jobs, err := h.service.ListJobs(r.Context(), bankID, afterCreatedAt, afterID, limit+1)
 	if err != nil {
 		core.WriteJSONError(w, r, http.StatusInternalServerError, "INTERNAL_ERROR", err.Error(), nil)
 		return
 	}
 
+	hasMore := false
+	var nextCursor *string
+	if len(jobs) > limit {
+		hasMore = true
+		jobs = jobs[:limit]
+		enc := encodeCursor(jobs[len(jobs)-1].CreatedAt, jobs[len(jobs)-1].ID)
+		nextCursor = &enc
+	}
+
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-store")
-	_ = json.NewEncoder(w).Encode(res)
+	_ = json.NewEncoder(w).Encode(map[string]any{
+		"items":       jobs,
+		"next_cursor": nextCursor,
+		"has_more":    hasMore,
+	})
+}
+
+func (h *Handler) HandleListQualityFindings(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		core.WriteJSONError(w, r, http.StatusMethodNotAllowed, "INVALID_REQUEST", "Method not allowed", nil)
+		return
+	}
+
+	jobID := r.URL.Query().Get("job_id")
+	candidateID := r.URL.Query().Get("candidate_id")
+	status := r.URL.Query().Get("status")
+	cursorParam := r.URL.Query().Get("cursor")
+	limitParam := r.URL.Query().Get("limit")
+
+	limit := 30
+	if limitParam != "" {
+		l, err := strconv.Atoi(limitParam)
+		if err != nil || l <= 0 || l > 100 {
+			core.WriteJSONError(w, r, http.StatusBadRequest, "INVALID_REQUEST", "Limit must be between 1 and 100", nil)
+			return
+		}
+		limit = l
+	}
+
+	var afterCreatedAt int64
+	var afterID string
+	if cursorParam != "" {
+		ca, id, err := decodeCursor(cursorParam)
+		if err != nil {
+			core.WriteJSONError(w, r, http.StatusBadRequest, "INVALID_REQUEST", "Invalid cursor", nil)
+			return
+		}
+		afterCreatedAt = ca
+		afterID = id
+	}
+
+	items, err := h.service.ListQualityFindings(r.Context(), jobID, candidateID, status, afterCreatedAt, afterID, limit+1)
+	if err != nil {
+		core.WriteJSONError(w, r, http.StatusInternalServerError, "INTERNAL_ERROR", err.Error(), nil)
+		return
+	}
+
+	hasMore := false
+	var nextCursor *string
+	if len(items) > limit {
+		hasMore = true
+		items = items[:limit]
+		enc := encodeCursor(items[len(items)-1].CreatedAt, items[len(items)-1].ID)
+		nextCursor = &enc
+	}
+
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-store")
+	_ = json.NewEncoder(w).Encode(map[string]any{
+		"items":       items,
+		"next_cursor": nextCursor,
+		"has_more":    hasMore,
+	})
 }
 
 func (h *Handler) HandleResolveQualityFinding(w http.ResponseWriter, r *http.Request) {

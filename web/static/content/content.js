@@ -77,7 +77,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (res.ok) {
                     window.location.reload();
                 } else {
-                    const err = await res.json();
+                    const err = await res.json().catch(() => ({}));
                     createErrorMsg.textContent = err.error?.message || '创建题库失败';
                     createErrorMsg.classList.remove('hidden');
                 }
@@ -128,9 +128,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
                     row.remove();
                     const countEl = document.getElementById('member-count-val');
-                    if (countEl) countEl.textContent = Math.max(0, parseInt(countEl.textContent, 10) - 1);
+                    if (countEl) countEl.textContent = Math.max(0, (parseInt(countEl.textContent, 10) || 0) - 1);
                 } else {
-                    const err = await res.json();
+                    const err = await res.json().catch(() => ({}));
                     if (operationMsg) {
                         operationMsg.textContent = err.error?.message || '移除成员失败';
                         operationMsg.classList.remove('hidden');
@@ -168,7 +168,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     if (res.ok) {
                         window.location.reload();
                     } else {
-                        const err = await res.json();
+                        const err = await res.json().catch(() => ({}));
                         if (operationMsg) {
                             operationMsg.textContent = err.error?.message || '归档题库失败';
                             operationMsg.classList.remove('hidden');

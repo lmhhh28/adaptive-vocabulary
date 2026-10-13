@@ -256,3 +256,154 @@ func TestActiveProjectionVersionSwitch(t *testing.T) {
 		t.Fatalf("expected at least 1 v2 evidence record, got %d", v2Count)
 	}
 }
+
+func TestW01DetailAndPaginationAndAudit(t *testing.T) {
+	db, svc, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	ctx := context.Background()
+	bankID := "00000000-0000-4000-8000-000000000801"
+
+	sess, _, err := svc.CreateOrResumeSession(ctx, bankID, "", "")
+	if err != nil {
+		t.Fatalf("create session: %v", err)
+	}
+
+	// 1. Next question (ordinal 0)
+	nextRes, err := svc.NextQuestion(ctx, sess.ID, 0)
+	if err != nil {
+		t.Fatalf("next question: %v", err)
+	}
+
+	// Detail check before attempt
+	detail, err := svc.GetSessionDetail(ctx, sess.ID)
+	if err != nil {
+		t.Fatalf("get session detail: %v", err)
+	}
+	if detail.CurrentQuestion == nil || detail.CurrentQuestion.Ordinal != 0 {
+		t.Fatalf("expected CurrentQuestion with ordinal 0, got %+v", detail.CurrentQuestion)
+	}
+	if detail.LastAnsweredQuestion != nil {
+		t.Fatalf("expected LastAnsweredQuestion to be nil when current question unanswered")
+	}
+	if detail.Summary.AnsweredCount != 0 {
+		t.Fatalf("expected 0 answered count, got %d", detail.Summary.AnsweredCount)
+	}
+	if len(detail.RecentRecords) != 0 {
+		t.Fatalf("expected 0 recent records, got %d", len(detail.RecentRecords))
+	}
+
+	// Unanswered question 0 query should fail
+	_, err = svc.GetAnsweredQuestion(ctx, sess.ID, 0)
+	if !errors.Is(err, ErrNotAnswered) {
+		t.Fatalf("expected ErrNotAnswered, got %v", err)
+	}
+
+	// 2. Submit attempt for Q0
+	optID := nextRes.Question.Options[0].ID
+	fb, _, err := svc.SubmitAttempt(ctx, sess.ID, SubmitAttemptRequest{
+		InstanceID: nextRes.Question.InstanceID,
+		OptionID:   optID,
+	}, "k-att-0", "digest-0", "")
+	if err != nil {
+		t.Fatalf("submit attempt: %v", err)
+	}
+
+	// Detail check after attempt (before next)
+	detailAfter, err := svc.GetSessionDetail(ctx, sess.ID)
+	if err != nil {
+		t.Fatalf("get session detail after attempt: %v", err)
+	}
+	if detailAfter.CurrentQuestion != nil {
+		t.Fatalf("expected CurrentQuestion to be nil before next, got %+v", detailAfter.CurrentQuestion)
+	}
+	if detailAfter.LastAnsweredQuestion == nil {
+		t.Fatalf("expected LastAnsweredQuestion to be populated")
+	}
+	if detailAfter.LastAnsweredQuestion.Question.Ordinal != 0 {
+		t.Fatalf("expected LastAnsweredQuestion ordinal 0, got %d", detailAfter.LastAnsweredQuestion.Question.Ordinal)
+	}
+	if detailAfter.Summary.AnsweredCount != 1 {
+		t.Fatalf("expected AnsweredCount 1, got %d", detailAfter.Summary.AnsweredCount)
+	}
+	if len(detailAfter.RecentRecords) != 1 {
+		t.Fatalf("expected 1 recent record, got %d", len(detailAfter.RecentRecords))
+	}
+
+	// 3. GetAnswerRecords
+	recRes, err := svc.GetAnswerRecords(ctx, sess.ID, nil, 30)
+	if err != nil {
+		t.Fatalf("get answer records: %v", err)
+	}
+	if len(recRes.Items) != 1 || recRes.Items[0].Ordinal != 0 {
+		t.Fatalf("unexpected answer records items: %+v", recRes.Items)
+	}
+	if recRes.HasMore {
+		t.Fatalf("expected has_more to be false")
+	}
+
+	// 4. GetAnsweredQuestion
+	ansQ, err := svc.GetAnsweredQuestion(ctx, sess.ID, 0)
+	if err != nil {
+		t.Fatalf("get answered question 0: %v", err)
+	}
+	if ansQ.Question.InstanceID != nextRes.Question.InstanceID {
+		t.Fatalf("expected instance id %s, got %s", nextRes.Question.InstanceID, ansQ.Question.InstanceID)
+	}
+	if ansQ.Feedback.AttemptID != fb.AttemptID {
+		t.Fatalf("expected attempt id %s, got %s", fb.AttemptID, ansQ.Feedback.AttemptID)
+	}
+
+	// 5. RecordFeedbackView
+	clientEventID := core.NewUUID()
+	fvRes, replayed, err := svc.RecordFeedbackView(ctx, sess.ID, FeedbackViewRequest{
+		ClientEventID: clientEventID,
+		InstanceID:    nextRes.Question.InstanceID,
+		Presentation:  "history",
+	}, clientEventID, "digest-fv-1")
+	if err != nil {
+		t.Fatalf("record feedback view: %v", err)
+	}
+	if replayed {
+		t.Fatalf("expected first call not replayed")
+	}
+	if fvRes.ViewID == "" || fvRes.EventSequence <= 0 {
+		t.Fatalf("invalid feedback view result: %+v", fvRes)
+	}
+
+	// Replay with same key and digest
+	fvRes2, replayed2, err := svc.RecordFeedbackView(ctx, sess.ID, FeedbackViewRequest{
+		ClientEventID: clientEventID,
+		InstanceID:    nextRes.Question.InstanceID,
+		Presentation:  "history",
+	}, clientEventID, "digest-fv-1")
+	if err != nil {
+		t.Fatalf("replay feedback view: %v", err)
+	}
+	if !replayed2 {
+		t.Fatalf("expected replayed=true")
+	}
+	if fvRes2.ViewID != fvRes.ViewID {
+		t.Fatalf("expected same view ID %s, got %s", fvRes.ViewID, fvRes2.ViewID)
+	}
+
+	// Replay with same key but different digest -> conflict
+	_, _, err = svc.RecordFeedbackView(ctx, sess.ID, FeedbackViewRequest{
+		ClientEventID: clientEventID,
+		InstanceID:    nextRes.Question.InstanceID,
+		Presentation:  "history",
+	}, clientEventID, "different-digest")
+	if !errors.Is(err, core.ErrIdempotencyConflict) {
+		t.Fatalf("expected ErrIdempotencyConflict, got %v", err)
+	}
+
+	// Check DB table row
+	var count int
+	if err := db.QueryRow("SELECT COUNT(*) FROM practice_feedback_view WHERE session_id = ?", sess.ID).Scan(&count); err != nil {
+		t.Fatalf("query practice_feedback_view count: %v", err)
+	}
+	if count != 1 {
+		t.Fatalf("expected 1 row in practice_feedback_view, got %d", count)
+	}
+}
+

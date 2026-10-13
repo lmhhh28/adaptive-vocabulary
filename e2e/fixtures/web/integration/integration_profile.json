@@ -1,0 +1,19 @@
+{
+  "config_version": "generation-v2",
+  "budget_policy_version": "budget-v2",
+  "mode": "test",
+  "quality_policy_version": "quality-v1",
+  "production_adapter": "chat-completions-json-v1",
+  "generator": {
+    "base_url": "http://127.0.0.1:9999",
+    "model": "test-generator",
+    "api_key": "w08-key-02",
+    "max_output_tokens": 1024
+  },
+  "evaluator": {
+    "base_url": "http://127.0.0.1:9999",
+    "model": "test-evaluator",
+    "api_key": "w08-key-02",
+    "max_output_tokens": 512
+  }
+}

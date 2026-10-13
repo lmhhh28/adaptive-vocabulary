@@ -147,6 +147,14 @@ func (h *Handler) ServeNewExamPage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	distIndex := findWebPath("web/frontend/dist/index.html")
+	if content, err := os.ReadFile(distIndex); err == nil {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		w.Header().Set("Cache-Control", "no-store")
+		_, _ = w.Write(content)
+		return
+	}
+
 	tmplPath := findWebPath("web/templates/exam/exam.html")
 	tmpl, err := template.ParseFiles(tmplPath)
 	if err != nil {
@@ -182,6 +190,14 @@ func (h *Handler) ServeNewExamPage(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) ServeExamPages(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	distIndex := findWebPath("web/frontend/dist/index.html")
+	if content, err := os.ReadFile(distIndex); err == nil {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		w.Header().Set("Cache-Control", "no-store")
+		_, _ = w.Write(content)
 		return
 	}
 

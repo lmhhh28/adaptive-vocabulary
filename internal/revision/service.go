@@ -372,8 +372,20 @@ func (s *Service) RetireQuestionVersion(ctx context.Context, versionID, reason s
 	now := time.Now().UTC().UnixNano() / 1000
 
 	err := core.RunInTx(ctx, s.db, func(tc *core.TxnContext) error {
+		if err := core.CheckMaintenance(tc); err != nil {
+			return err
+		}
+		var openInTx int
+		err := tc.QueryRow("SELECT count(*) FROM session WHERE status = 'open'").Scan(&openInTx)
+		if err != nil {
+			return err
+		}
+		if openInTx > 0 {
+			return ErrSessionActive
+		}
+
 		var curRev int64
-		err := tc.QueryRow("SELECT revision FROM question_version WHERE id = ?", versionID).Scan(&curRev)
+		err = tc.QueryRow("SELECT revision FROM question_version WHERE id = ?", versionID).Scan(&curRev)
 		if err != nil {
 			if errors.Is(err, sql.ErrNoRows) {
 				return ErrVersionNotFound

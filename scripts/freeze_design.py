@@ -9,7 +9,8 @@ MANIFEST = ROOT / "config/design-freeze-v1.json"
 
 
 def snapshot():
-    paths = [ROOT / "README.md", *sorted((ROOT / "docs").glob("[0-9][0-9]-*.md")),
+    paths = [ROOT / "README.md", *sorted((ROOT / "docs").glob("0[0-9]-*.md")),
+             *(ROOT / "docs").glob("10-*.md"),
              ROOT / "config/policy-v1.json", ROOT / "config/policy-v2.json",
              ROOT / "config/content-sources.json", ROOT / "config/generation-profile.example.json",
              ROOT / "config/implementation-plan-v1.json",

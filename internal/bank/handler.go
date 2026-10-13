@@ -2,6 +2,7 @@ package bank
 
 import (
 	"database/sql"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -10,6 +11,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -65,6 +67,8 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("/api/v1/sources/", h.HandleSourceByID)
 	mux.HandleFunc("/api/v1/banks", h.HandleBanks)
 	mux.HandleFunc("/api/v1/banks/", h.HandleBankSubroutes)
+	mux.HandleFunc("/api/v1/content/sense-versions", h.HandleSenseVersions)
+	mux.HandleFunc("/api/v1/content/question-versions", h.HandleQuestionVersions)
 	mux.HandleFunc("/api/v1/test/questions", h.HandleTestQuestions)
 }
 
@@ -140,6 +144,14 @@ func (h *Handler) ServeBanksPage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	distIndex := findWebPath("web/frontend/dist/index.html")
+	if content, err := os.ReadFile(distIndex); err == nil {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		w.Header().Set("Cache-Control", "no-store")
+		_, _ = w.Write(content)
+		return
+	}
+
 	banks, err := h.service.ListBanks(r.Context())
 	if err != nil {
 		http.Error(w, "failed to list banks", http.StatusInternalServerError)
@@ -169,6 +181,14 @@ func (h *Handler) ServeBankDetailPage(w http.ResponseWriter, r *http.Request) {
 	id := strings.TrimPrefix(r.URL.Path, "/banks/")
 	if id == "" || strings.Contains(id, "/") {
 		http.NotFound(w, r)
+		return
+	}
+
+	distIndex := findWebPath("web/frontend/dist/index.html")
+	if content, err := os.ReadFile(distIndex); err == nil {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		w.Header().Set("Cache-Control", "no-store")
+		_, _ = w.Write(content)
 		return
 	}
 
@@ -292,6 +312,10 @@ func (h *Handler) createSource(w http.ResponseWriter, r *http.Request) {
 	var respCode int
 
 	txErr := core.RunInTx(r.Context(), h.db, func(tc *core.TxnContext) error {
+		if err := core.CheckMaintenance(tc); err != nil {
+			return ErrUnderMaintenance
+		}
+
 		rec, err := core.CheckIdempotency(tc, "POST", "/api/v1/sources", idempotencyKey, digest)
 		if errors.Is(err, core.ErrIdempotencyConflict) {
 			return err
@@ -331,6 +355,10 @@ func (h *Handler) createSource(w http.ResponseWriter, r *http.Request) {
 
 	if errors.Is(txErr, core.ErrIdempotencyConflict) {
 		core.WriteJSONError(w, r, http.StatusConflict, "IDEMPOTENCY_CONFLICT", "Idempotency key reused with different body", nil)
+		return
+	}
+	if errors.Is(txErr, ErrUnderMaintenance) {
+		core.WriteJSONError(w, r, http.StatusServiceUnavailable, "MAINTENANCE", "System under maintenance", nil)
 		return
 	}
 	if txErr != nil {
@@ -466,6 +494,10 @@ func (h *Handler) createBankJSON(w http.ResponseWriter, r *http.Request) {
 	var isReplay bool
 
 	txErr := core.RunInTx(r.Context(), h.db, func(tc *core.TxnContext) error {
+		if err := core.CheckMaintenance(tc); err != nil {
+			return ErrUnderMaintenance
+		}
+
 		rec, err := core.CheckIdempotency(tc, "POST", "/api/v1/banks", idempotencyKey, digest)
 		if errors.Is(err, core.ErrIdempotencyConflict) {
 			return err
@@ -506,6 +538,10 @@ func (h *Handler) createBankJSON(w http.ResponseWriter, r *http.Request) {
 
 	if errors.Is(txErr, core.ErrIdempotencyConflict) {
 		core.WriteJSONError(w, r, http.StatusConflict, "IDEMPOTENCY_CONFLICT", "Idempotency key reused with different payload", nil)
+		return
+	}
+	if errors.Is(txErr, ErrUnderMaintenance) {
+		core.WriteJSONError(w, r, http.StatusServiceUnavailable, "MAINTENANCE", "System under maintenance", nil)
 		return
 	}
 	if txErr != nil {
@@ -825,3 +861,138 @@ func (h *Handler) archiveBankJSON(w http.ResponseWriter, r *http.Request, bankID
 	w.WriteHeader(respCode)
 	_, _ = w.Write([]byte(respBody))
 }
+
+func (h *Handler) HandleSenseVersions(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		core.WriteJSONError(w, r, http.StatusMethodNotAllowed, "INVALID_REQUEST", "Method not allowed", nil)
+		return
+	}
+
+	active, err := core.GetActiveSession(h.db)
+	if err != nil {
+		core.WriteJSONError(w, r, http.StatusInternalServerError, "INTERNAL_ERROR", err.Error(), nil)
+		return
+	}
+	if active != nil {
+		core.WriteJSONError(w, r, http.StatusConflict, "SESSION_ACTIVE", "Active session in progress; content version discovery locked", map[string]any{
+			"session_id":   active.ID,
+			"session_kind": active.Kind,
+		})
+		return
+	}
+
+	bankID := r.URL.Query().Get("bank_id")
+	cursorParam := r.URL.Query().Get("cursor")
+	limitParam := r.URL.Query().Get("limit")
+
+	limit := 30
+	if limitParam != "" {
+		l, err := strconv.Atoi(limitParam)
+		if err != nil || l <= 0 || l > 100 {
+			core.WriteJSONError(w, r, http.StatusBadRequest, "INVALID_REQUEST", "Limit must be between 1 and 100", nil)
+			return
+		}
+		limit = l
+	}
+
+	afterID := ""
+	if cursorParam != "" {
+		decoded, err := base64.URLEncoding.DecodeString(cursorParam)
+		if err != nil || len(decoded) == 0 {
+			core.WriteJSONError(w, r, http.StatusBadRequest, "INVALID_REQUEST", "Invalid cursor", nil)
+			return
+		}
+		afterID = string(decoded)
+	}
+
+	items, err := h.service.ListSenseVersions(r.Context(), bankID, afterID, limit+1)
+	if err != nil {
+		core.WriteJSONError(w, r, http.StatusInternalServerError, "INTERNAL_ERROR", err.Error(), nil)
+		return
+	}
+
+	hasMore := false
+	var nextCursor *string
+	if len(items) > limit {
+		hasMore = true
+		items = items[:limit]
+		encoded := base64.URLEncoding.EncodeToString([]byte(items[len(items)-1].SenseVersionID))
+		nextCursor = &encoded
+	}
+
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-store")
+	_ = json.NewEncoder(w).Encode(map[string]any{
+		"items":       items,
+		"next_cursor": nextCursor,
+		"has_more":    hasMore,
+	})
+}
+
+func (h *Handler) HandleQuestionVersions(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		core.WriteJSONError(w, r, http.StatusMethodNotAllowed, "INVALID_REQUEST", "Method not allowed", nil)
+		return
+	}
+
+	active, err := core.GetActiveSession(h.db)
+	if err != nil {
+		core.WriteJSONError(w, r, http.StatusInternalServerError, "INTERNAL_ERROR", err.Error(), nil)
+		return
+	}
+	if active != nil {
+		core.WriteJSONError(w, r, http.StatusConflict, "SESSION_ACTIVE", "Active session in progress; content version discovery locked", map[string]any{
+			"session_id":   active.ID,
+			"session_kind": active.Kind,
+		})
+		return
+	}
+
+	bankID := r.URL.Query().Get("bank_id")
+	cursorParam := r.URL.Query().Get("cursor")
+	limitParam := r.URL.Query().Get("limit")
+
+	limit := 30
+	if limitParam != "" {
+		l, err := strconv.Atoi(limitParam)
+		if err != nil || l <= 0 || l > 100 {
+			core.WriteJSONError(w, r, http.StatusBadRequest, "INVALID_REQUEST", "Limit must be between 1 and 100", nil)
+			return
+		}
+		limit = l
+	}
+
+	afterID := ""
+	if cursorParam != "" {
+		decoded, err := base64.URLEncoding.DecodeString(cursorParam)
+		if err != nil || len(decoded) == 0 {
+			core.WriteJSONError(w, r, http.StatusBadRequest, "INVALID_REQUEST", "Invalid cursor", nil)
+			return
+		}
+		afterID = string(decoded)
+	}
+
+	items, err := h.service.ListQuestionVersions(r.Context(), bankID, afterID, limit+1)
+	if err != nil {
+		core.WriteJSONError(w, r, http.StatusInternalServerError, "INTERNAL_ERROR", err.Error(), nil)
+		return
+	}
+
+	hasMore := false
+	var nextCursor *string
+	if len(items) > limit {
+		hasMore = true
+		items = items[:limit]
+		encoded := base64.URLEncoding.EncodeToString([]byte(items[len(items)-1].QuestionVersionID))
+		nextCursor = &encoded
+	}
+
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-store")
+	_ = json.NewEncoder(w).Encode(map[string]any{
+		"items":       items,
+		"next_cursor": nextCursor,
+		"has_more":    hasMore,
+	})
+}
+

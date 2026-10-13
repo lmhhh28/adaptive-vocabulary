@@ -44,6 +44,12 @@ function setupUploadPage() {
 
             let resp;
             if (fileInput.files && fileInput.files.length > 0) {
+                if (fileInput.files[0].size > 2 * 1024 * 1024) {
+                    showBanner('文件大小不能超过 2MB', true);
+                    submitBtn.disabled = false;
+                    submitBtn.textContent = '开始导入解析';
+                    return;
+                }
                 // Multipart upload
                 const formData = new FormData();
                 formData.append('file', fileInput.files[0]);
@@ -172,54 +178,99 @@ function renderItems(items, importID) {
             'excluded': '已排除'
         }[item.status] || item.status;
 
-        let candidatesHTML = '';
+        const headerDiv = document.createElement('div');
+        headerDiv.className = 'item-header';
+        const headerLeftDiv = document.createElement('div');
+        const wordSpan = document.createElement('span');
+        wordSpan.className = 'item-word';
+        wordSpan.textContent = item.normalized_word || item.raw_input;
+        headerLeftDiv.appendChild(wordSpan);
+
+        if (item.raw_input !== item.normalized_word) {
+            const rawSmall = document.createElement('small');
+            rawSmall.className = 'text-muted';
+            rawSmall.textContent = ` (原始输入: ${item.raw_input})`;
+            headerLeftDiv.appendChild(rawSmall);
+        }
+        headerDiv.appendChild(headerLeftDiv);
+
+        const statusBadge = document.createElement('span');
+        statusBadge.className = `item-status-badge badge-${item.status}`;
+        statusBadge.textContent = statusText;
+        headerDiv.appendChild(statusBadge);
+
+        card.appendChild(headerDiv);
+
+        const bodyDiv = document.createElement('div');
+        bodyDiv.className = 'item-body';
+
+        if (item.disposition_reason) {
+            const reasonP = document.createElement('p');
+            reasonP.className = 'meta-info';
+            reasonP.textContent = `原因: ${item.disposition_reason}`;
+            bodyDiv.appendChild(reasonP);
+        }
+
         if (item.candidates && item.candidates.length > 0) {
-            candidatesHTML = `
-                <div class="candidates-box">
-                    <p class="text-muted" style="margin-bottom:0.4rem;font-size:0.85rem;">候选标准词义 (请选择采纳项):</p>
-                    ${item.candidates.map((c, idx) => `
-                        <label class="candidate-option">
-                            <input type="radio" name="candidate-${item.id}" value="${c.sense_id}" ${idx === 0 ? 'checked' : ''} ${item.status !== 'ambiguous' ? 'disabled' : ''}>
-                            <div>
-                                <span class="candidate-pos">[${c.part_of_speech}]</span>
-                                <span class="candidate-meaning">${c.meaning}</span>
-                            </div>
-                        </label>
-                    `).join('')}
-                </div>
-            `;
+            const candidatesBox = document.createElement('div');
+            candidatesBox.className = 'candidates-box';
+            
+            const boxTitle = document.createElement('p');
+            boxTitle.className = 'text-muted';
+            boxTitle.style.marginBottom = '0.4rem';
+            boxTitle.style.fontSize = '0.85rem';
+            boxTitle.textContent = '候选标准词义 (请选择采纳项):';
+            candidatesBox.appendChild(boxTitle);
+
+            item.candidates.forEach((c, idx) => {
+                const label = document.createElement('label');
+                label.className = 'candidate-option';
+
+                const radio = document.createElement('input');
+                radio.type = 'radio';
+                radio.name = `candidate-${item.id}`;
+                radio.value = c.sense_id;
+                if (idx === 0) radio.checked = true;
+                if (item.status !== 'ambiguous') radio.disabled = true;
+                label.appendChild(radio);
+
+                const infoDiv = document.createElement('div');
+                const posSpan = document.createElement('span');
+                posSpan.className = 'candidate-pos';
+                posSpan.textContent = `[${c.part_of_speech}]`;
+                infoDiv.appendChild(posSpan);
+                
+                infoDiv.appendChild(document.createTextNode(' '));
+                
+                const meaningSpan = document.createElement('span');
+                meaningSpan.className = 'candidate-meaning';
+                meaningSpan.textContent = c.meaning;
+                infoDiv.appendChild(meaningSpan);
+
+                label.appendChild(infoDiv);
+                candidatesBox.appendChild(label);
+            });
+            bodyDiv.appendChild(candidatesBox);
         }
 
-        let actionButtonsHTML = '';
         if (item.status === 'ambiguous') {
-            actionButtonsHTML = `
-                <div class="item-actions">
-                    <button class="btn btn-primary btn-xs btn-adopt" data-item-id="${item.id}" data-rev="${item.revision}">采纳所选词义</button>
-                    <button class="btn btn-outline btn-xs btn-exclude" data-item-id="${item.id}" data-rev="${item.revision}">排除此词</button>
-                </div>
+            const actionsDiv = document.createElement('div');
+            actionsDiv.className = 'item-actions';
+            actionsDiv.innerHTML = `
+                <button class="btn btn-primary btn-xs btn-adopt" data-item-id="${item.id}" data-rev="${item.revision}">采纳所选词义</button>
+                <button class="btn btn-outline btn-xs btn-exclude" data-item-id="${item.id}" data-rev="${item.revision}">排除此词</button>
             `;
+            bodyDiv.appendChild(actionsDiv);
         } else if (item.status === 'not_found') {
-            actionButtonsHTML = `
-                <div class="item-actions">
-                    <button class="btn btn-outline btn-xs btn-exclude" data-item-id="${item.id}" data-rev="${item.revision}">标记排除</button>
-                </div>
+            const actionsDiv = document.createElement('div');
+            actionsDiv.className = 'item-actions';
+            actionsDiv.innerHTML = `
+                <button class="btn btn-outline btn-xs btn-exclude" data-item-id="${item.id}" data-rev="${item.revision}">标记排除</button>
             `;
+            bodyDiv.appendChild(actionsDiv);
         }
 
-        card.innerHTML = `
-            <div class="item-header">
-                <div>
-                    <span class="item-word">${item.normalized_word || item.raw_input}</span>
-                    ${item.raw_input !== item.normalized_word ? `<small class="text-muted"> (原始输入: ${item.raw_input})</small>` : ''}
-                </div>
-                <span class="item-status-badge badge-${item.status}">${statusText}</span>
-            </div>
-            <div class="item-body">
-                ${item.disposition_reason ? `<p class="meta-info">原因: ${item.disposition_reason}</p>` : ''}
-                ${candidatesHTML}
-                ${actionButtonsHTML}
-            </div>
-        `;
+        card.appendChild(bodyDiv);
 
         container.appendChild(card);
     });

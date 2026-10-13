@@ -46,6 +46,24 @@ type BankDetail struct {
 	Members []BankMember `json:"members"`
 }
 
+type SenseVersionItem struct {
+	SenseID        string `json:"sense_id"`
+	SenseVersionID string `json:"sense_version_id"`
+	LexemeID       string `json:"lexeme_id"`
+	CanonicalForm  string `json:"canonical_form"`
+	Definition     string `json:"definition"`
+	Status         string `json:"status"`
+}
+
+type QuestionVersionItem struct {
+	QuestionVersionID string `json:"question_version_id"`
+	SenseID           string `json:"sense_id"`
+	FormID            string `json:"form_id"`
+	TaskFamily        string `json:"task_family"`
+	Status            string `json:"status"`
+	Revision          int64  `json:"revision"`
+}
+
 type Service struct {
 	db *sql.DB
 }
@@ -364,4 +382,91 @@ func (s *Service) ArchiveBank(ctx context.Context, bankID string, expectedRevisi
 	})
 
 	return newRev, currentRev, err
+}
+
+func (s *Service) ListSenseVersions(ctx context.Context, bankID string, afterID string, limit int) ([]SenseVersionItem, error) {
+	if limit <= 0 {
+		limit = 30
+	}
+	var rows *sql.Rows
+	var err error
+
+	if bankID != "" {
+		rows, err = s.db.QueryContext(ctx, `
+			SELECT s.id, sv.id, s.lexeme_id, l.canonical_form, sv.meaning
+			FROM sense_version sv
+			JOIN sense s ON sv.sense_id = s.id
+			JOIN lexeme l ON s.lexeme_id = l.id
+			JOIN bank_sense bs ON bs.sense_id = s.id
+			WHERE bs.bank_id = ? AND sv.id > ?
+			ORDER BY sv.id ASC
+			LIMIT ?
+		`, bankID, afterID, limit)
+	} else {
+		rows, err = s.db.QueryContext(ctx, `
+			SELECT s.id, sv.id, s.lexeme_id, l.canonical_form, sv.meaning
+			FROM sense_version sv
+			JOIN sense s ON sv.sense_id = s.id
+			JOIN lexeme l ON s.lexeme_id = l.id
+			WHERE sv.id > ?
+			ORDER BY sv.id ASC
+			LIMIT ?
+		`, afterID, limit)
+	}
+	if err != nil {
+		return nil, fmt.Errorf("query sense versions: %w", err)
+	}
+	defer rows.Close()
+
+	items := make([]SenseVersionItem, 0)
+	for rows.Next() {
+		var item SenseVersionItem
+		if err := rows.Scan(&item.SenseID, &item.SenseVersionID, &item.LexemeID, &item.CanonicalForm, &item.Definition); err != nil {
+			return nil, fmt.Errorf("scan sense version: %w", err)
+		}
+		item.Status = "published"
+		items = append(items, item)
+	}
+	return items, nil
+}
+
+func (s *Service) ListQuestionVersions(ctx context.Context, bankID string, afterID string, limit int) ([]QuestionVersionItem, error) {
+	if limit <= 0 {
+		limit = 30
+	}
+	var rows *sql.Rows
+	var err error
+
+	if bankID != "" {
+		rows, err = s.db.QueryContext(ctx, `
+			SELECT qv.id, qv.sense_id, qv.form_id, qv.task_family, qv.status, qv.revision
+			FROM question_version qv
+			JOIN bank_sense bs ON bs.sense_id = qv.sense_id
+			WHERE bs.bank_id = ? AND qv.id > ?
+			ORDER BY qv.id ASC
+			LIMIT ?
+		`, bankID, afterID, limit)
+	} else {
+		rows, err = s.db.QueryContext(ctx, `
+			SELECT qv.id, qv.sense_id, qv.form_id, qv.task_family, qv.status, qv.revision
+			FROM question_version qv
+			WHERE qv.id > ?
+			ORDER BY qv.id ASC
+			LIMIT ?
+		`, afterID, limit)
+	}
+	if err != nil {
+		return nil, fmt.Errorf("query question versions: %w", err)
+	}
+	defer rows.Close()
+
+	items := make([]QuestionVersionItem, 0)
+	for rows.Next() {
+		var item QuestionVersionItem
+		if err := rows.Scan(&item.QuestionVersionID, &item.SenseID, &item.FormID, &item.TaskFamily, &item.Status, &item.Revision); err != nil {
+			return nil, fmt.Errorf("scan question version: %w", err)
+		}
+		items = append(items, item)
+	}
+	return items, nil
 }

@@ -47,14 +47,30 @@ type BudgetUsageSummary struct {
 	BudgetOverrun      bool `json:"budget_overrun"`
 }
 
+type JobCandidateItem struct {
+	ID                 string  `json:"id"`
+	ItemID             string  `json:"item_id"`
+	AttemptNumber      int     `json:"attempt_number"`
+	CandidateIndex     int     `json:"candidate_index"`
+	Disposition        string  `json:"disposition"`
+	PublishedVersionID *string `json:"published_version_id,omitempty"`
+	CreatedAt          int64   `json:"created_at"`
+}
+
 type JobSummary struct {
 	ID                      string             `json:"id"`
+	JobID                   string             `json:"job_id,omitempty"`
 	BankID                  string             `json:"bank_id"`
+	BankName                string             `json:"bank_name,omitempty"`
 	Status                  string             `json:"status"`
 	Requested               int                `json:"requested"`
+	RequestedCount          int                `json:"requested_count,omitempty"`
 	Published               int                `json:"published"`
+	PublishedCount          int                `json:"published_count,omitempty"`
 	Rejected                int                `json:"rejected"`
+	RejectedCount           int                `json:"rejected_count,omitempty"`
 	Pending                 int                `json:"pending"`
+	PendingCount            int                `json:"pending_count,omitempty"`
 	Revision                int                `json:"revision"`
 	BudgetUsage             BudgetUsageSummary `json:"budget_usage"`
 	FixedInputDigest        string             `json:"fixed_input_digest"`
@@ -62,6 +78,13 @@ type JobSummary struct {
 	QualityPolicyVersion    string             `json:"quality_policy_version"`
 	CreatedAt               int64              `json:"created_at"`
 	UpdatedAt               int64              `json:"updated_at"`
+	Candidates              []JobCandidateItem `json:"candidates,omitempty"`
+}
+
+type ListJobsResponse struct {
+	Items      []JobSummary `json:"items"`
+	NextCursor *string      `json:"next_cursor,omitempty"`
+	HasMore    bool         `json:"has_more"`
 }
 
 type FixedItemInput struct {
@@ -270,6 +293,7 @@ type QualityFindingItem struct {
 type QualityFindingsResponse struct {
 	Items      []QualityFindingItem `json:"items"`
 	NextCursor *string              `json:"next_cursor,omitempty"`
+	HasMore    bool                 `json:"has_more"`
 }
 
 type ResolveFindingRequest struct {

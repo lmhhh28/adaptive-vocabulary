@@ -73,6 +73,14 @@ func (h *Handler) ServeQualityUI(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	distIndex := findWebPath("web/frontend/dist/index.html")
+	if content, err := os.ReadFile(distIndex); err == nil {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		w.Header().Set("Cache-Control", "no-store")
+		_, _ = w.Write(content)
+		return
+	}
+
 	data, err := h.service.LoadQualityPageData(r.Context())
 	if err != nil {
 		core.WriteJSONError(w, r, http.StatusInternalServerError, "INTERNAL_ERROR", err.Error(), nil)
@@ -131,7 +139,6 @@ func (h *Handler) handleEvidenceDisposition(w http.ResponseWriter, r *http.Reque
 		core.WriteJSONError(w, r, http.StatusBadRequest, "INVALID_REQUEST", "action and reason are required", nil)
 		return
 	}
-
 	body, _ := json.Marshal(req)
 	digest, _ := core.ComputeRequestDigest(body)
 	resp, replayed, err := h.service.ApplyEvidenceDispositionIdempotent(r.Context(), versionID, req.Action, req.Reason, req.ExpectedRevision, r.Header.Get("Idempotency-Key"), digest)
@@ -184,9 +191,16 @@ func (h *Handler) handleRetire(w http.ResponseWriter, r *http.Request, versionID
 		core.WriteJSONError(w, r, http.StatusBadRequest, "INVALID_REQUEST", "Failed to parse request JSON", nil)
 		return
 	}
-
 	resp, err := h.service.RetireQuestionVersion(r.Context(), versionID, req.Reason, req.ExpectedRevision)
 	if err != nil {
+		if errors.Is(err, core.ErrUnderMaintenance) {
+			core.WriteJSONError(w, r, http.StatusServiceUnavailable, "MAINTENANCE", "System is rebuilding", nil)
+			return
+		}
+		if errors.Is(err, ErrSessionActive) {
+			core.WriteJSONError(w, r, http.StatusConflict, "SESSION_ACTIVE", "Active session exists; please end or submit session before retiring", nil)
+			return
+		}
 		if errors.Is(err, ErrRevisionConflict) {
 			core.WriteJSONError(w, r, http.StatusConflict, "REVISION_CONFLICT", "Question version revision conflict", nil)
 			return

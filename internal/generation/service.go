@@ -1261,17 +1261,18 @@ func (s *Service) CompleteItem(ctx context.Context, req CompleteItemRequest, now
 
 func (s *Service) GetJob(ctx context.Context, jobID string) (*JobSummary, error) {
 	query := `
-		SELECT j.id, j.bank_id, j.status, j.requested_count, j.published_count, j.rejected_count, j.pending_count,
+		SELECT j.id, j.bank_id, b.name, j.status, j.requested_count, j.published_count, j.rejected_count, j.pending_count,
 		       j.revision, j.fixed_input_digest, j.generation_config_version, j.quality_policy_version, j.created_at, j.updated_at,
 		       l.authorized_requests, l.max_requests, l.total_tokens, l.max_tokens, l.budget_overrun
 		FROM generation_job j
+		JOIN bank b ON b.id = j.bank_id
 		JOIN generation_budget_ledger l ON l.job_id = j.id
 		WHERE j.id = ?
 	`
 	var job JobSummary
 	var overrun int
 	err := s.db.QueryRowContext(ctx, query, jobID).Scan(
-		&job.ID, &job.BankID, &job.Status, &job.Requested, &job.Published, &job.Rejected, &job.Pending,
+		&job.ID, &job.BankID, &job.BankName, &job.Status, &job.Requested, &job.Published, &job.Rejected, &job.Pending,
 		&job.Revision, &job.FixedInputDigest, &job.GenerationConfigVersion, &job.QualityPolicyVersion, &job.CreatedAt, &job.UpdatedAt,
 		&job.BudgetUsage.AuthorizedRequests, &job.BudgetUsage.MaxRequests,
 		&job.BudgetUsage.TotalTokens, &job.BudgetUsage.MaxTokens, &overrun,
@@ -1282,8 +1283,92 @@ func (s *Service) GetJob(ctx context.Context, jobID string) (*JobSummary, error)
 	if err != nil {
 		return nil, fmt.Errorf("query job: %w", err)
 	}
+	job.JobID = job.ID
+	job.RequestedCount = job.Requested
+	job.PublishedCount = job.Published
+	job.RejectedCount = job.Rejected
+	job.PendingCount = job.Pending
 	job.BudgetUsage.BudgetOverrun = (overrun == 1)
+
+	// Fetch candidates for this job
+	candRows, err := s.db.QueryContext(ctx, `
+		SELECT id, item_id, attempt_number, candidate_index, disposition, published_version_id, created_at
+		FROM question_candidate
+		WHERE job_id = ?
+		ORDER BY attempt_number ASC, candidate_index ASC
+	`, jobID)
+	if err == nil {
+		defer candRows.Close()
+		for candRows.Next() {
+			var c JobCandidateItem
+			var pubID sql.NullString
+			if err := candRows.Scan(&c.ID, &c.ItemID, &c.AttemptNumber, &c.CandidateIndex, &c.Disposition, &pubID, &c.CreatedAt); err == nil {
+				if pubID.Valid {
+					c.PublishedVersionID = &pubID.String
+				}
+				job.Candidates = append(job.Candidates, c)
+			}
+		}
+	}
+
 	return &job, nil
+}
+
+func (s *Service) ListJobs(ctx context.Context, bankID string, afterCreatedAt int64, afterID string, limit int) ([]JobSummary, error) {
+	if limit <= 0 {
+		limit = 30
+	}
+	query := `
+		SELECT j.id, j.bank_id, b.name, j.status, j.requested_count, j.published_count, j.rejected_count, j.pending_count,
+		       j.revision, j.fixed_input_digest, j.generation_config_version, j.quality_policy_version, j.created_at, j.updated_at,
+		       l.authorized_requests, l.max_requests, l.total_tokens, l.max_tokens, l.budget_overrun
+		FROM generation_job j
+		JOIN bank b ON b.id = j.bank_id
+		JOIN generation_budget_ledger l ON l.job_id = j.id
+		WHERE 1=1
+	`
+	var args []any
+	if bankID != "" {
+		query += " AND j.bank_id = ?"
+		args = append(args, bankID)
+	}
+	if afterCreatedAt > 0 || afterID != "" {
+		query += " AND (j.created_at < ? OR (j.created_at = ? AND j.id < ?))"
+		args = append(args, afterCreatedAt, afterCreatedAt, afterID)
+	}
+	query += " ORDER BY j.created_at DESC, j.id DESC LIMIT ?"
+	args = append(args, limit)
+
+	rows, err := s.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("list generation jobs: %w", err)
+	}
+	defer rows.Close()
+
+	var jobs []JobSummary
+	for rows.Next() {
+		var job JobSummary
+		var overrun int
+		if err := rows.Scan(
+			&job.ID, &job.BankID, &job.BankName, &job.Status, &job.Requested, &job.Published, &job.Rejected, &job.Pending,
+			&job.Revision, &job.FixedInputDigest, &job.GenerationConfigVersion, &job.QualityPolicyVersion, &job.CreatedAt, &job.UpdatedAt,
+			&job.BudgetUsage.AuthorizedRequests, &job.BudgetUsage.MaxRequests,
+			&job.BudgetUsage.TotalTokens, &job.BudgetUsage.MaxTokens, &overrun,
+		); err != nil {
+			return nil, fmt.Errorf("scan generation job: %w", err)
+		}
+		job.JobID = job.ID
+		job.RequestedCount = job.Requested
+		job.PublishedCount = job.Published
+		job.RejectedCount = job.Rejected
+		job.PendingCount = job.Pending
+		job.BudgetUsage.BudgetOverrun = (overrun == 1)
+		jobs = append(jobs, job)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate generation jobs: %w", err)
+	}
+	return jobs, nil
 }
 
 func (s *Service) GetCandidate(ctx context.Context, candidateID string) (*CandidateDetailResponse, error) {
@@ -1318,9 +1403,9 @@ func (s *Service) GetCandidate(ctx context.Context, candidateID string) (*Candid
 	}, nil
 }
 
-func (s *Service) ListQualityFindings(ctx context.Context, jobID, candidateID, status string, limit int) (*QualityFindingsResponse, error) {
-	if limit <= 0 || limit > 200 {
-		limit = 50
+func (s *Service) ListQualityFindings(ctx context.Context, jobID, candidateID, status string, afterCreatedAt int64, afterID string, limit int) ([]QualityFindingItem, error) {
+	if limit <= 0 {
+		limit = 30
 	}
 
 	query := "SELECT id, job_id, candidate_id, finding_type, details_json, checker_version, status, resolution_id, revision, created_at, updated_at FROM quality_finding WHERE 1=1"
@@ -1338,7 +1423,11 @@ func (s *Service) ListQualityFindings(ctx context.Context, jobID, candidateID, s
 		query += " AND status = ?"
 		args = append(args, status)
 	}
-	query += " ORDER BY created_at DESC LIMIT ?"
+	if afterCreatedAt > 0 || afterID != "" {
+		query += " AND (created_at < ? OR (created_at = ? AND id < ?))"
+		args = append(args, afterCreatedAt, afterCreatedAt, afterID)
+	}
+	query += " ORDER BY created_at DESC, id DESC LIMIT ?"
 	args = append(args, limit)
 
 	rows, err := s.db.QueryContext(ctx, query, args...)
@@ -1368,7 +1457,7 @@ func (s *Service) ListQualityFindings(ctx context.Context, jobID, candidateID, s
 		return nil, fmt.Errorf("iterate quality findings: %w", err)
 	}
 
-	return &QualityFindingsResponse{Items: items}, nil
+	return items, nil
 }
 
 func (s *Service) ResolveFinding(ctx context.Context, findingID string, req ResolveFindingRequest, nowMicro int64) (*ResolveFindingResponse, error) {

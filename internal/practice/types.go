@@ -78,11 +78,62 @@ type EndSessionResult struct {
 	UnresolvedUnitCount int           `json:"unresolved_unit_count"`
 }
 
+// AcceptedAnswer represents a past answered question along with user selection and feedback.
+type AcceptedAnswer struct {
+	Question         PublicQuestion  `json:"question"`
+	SelectedOptionID string          `json:"selected_option_id"`
+	Feedback         AttemptFeedback `json:"feedback"`
+}
+
+// AnswerRecord represents the lightweight answer status for answer sheet / pagination.
+type AnswerRecord struct {
+	InstanceID string `json:"instance_id"`
+	Ordinal    int64  `json:"ordinal"` // 0-based
+	Correct    bool   `json:"correct"`
+}
+
+// PracticeCountsSummary represents the accepted attempts counts summary.
+type PracticeCountsSummary struct {
+	CountsScope    string `json:"counts_scope"` // "accepted_attempts"
+	AnsweredCount  int    `json:"answered_count"`
+	CorrectCount   int    `json:"correct_count"`
+	IncorrectCount int    `json:"incorrect_count"`
+}
+
+// AnswerRecordsResult is the response from GET /api/v1/practice-sessions/{id}/answer-records.
+type AnswerRecordsResult struct {
+	Items             []AnswerRecord        `json:"items"`
+	NextBeforeOrdinal *int64                `json:"next_before_ordinal"`
+	HasMore           bool                  `json:"has_more"`
+	Summary           PracticeCountsSummary `json:"summary"`
+	SessionRevision   int64                 `json:"session_revision"`
+}
+
+// FeedbackViewRequest is the payload for POST /api/v1/practice-sessions/{id}/feedback-views.
+type FeedbackViewRequest struct {
+	ClientEventID     string `json:"client_event_id"`
+	InstanceID        string `json:"instance_id"`
+	Presentation      string `json:"presentation"` // "history" or "restored_feedback"
+	ClientDisplayedAt string `json:"client_displayed_at,omitempty"`
+}
+
+// FeedbackViewResult is the response from POST /api/v1/practice-sessions/{id}/feedback-views.
+type FeedbackViewResult struct {
+	ViewID        string `json:"view_id"`
+	ClientEventID string `json:"client_event_id"`
+	EventSequence int64  `json:"event_sequence"`
+	RecordedAt    string `json:"recorded_at"`
+}
+
 // PracticeSessionDetail is the response from GET /api/v1/practice-sessions/{id}.
 type PracticeSessionDetail struct {
-	Session         *core.Session    `json:"session"`
-	CurrentQuestion *PublicQuestion  `json:"current_question,omitempty"`
-	LastFeedback    *AttemptFeedback `json:"last_feedback,omitempty"`
+	Session              *core.Session         `json:"session"`
+	CurrentQuestion      *PublicQuestion       `json:"current_question,omitempty"`
+	LastFeedback         *AttemptFeedback      `json:"last_feedback,omitempty"`
+	LastAnsweredQuestion *AcceptedAnswer       `json:"last_answered_question,omitempty"`
+	Summary              PracticeCountsSummary `json:"summary"`
+	RecentRecords        []AnswerRecord        `json:"recent_records"`
+	HasOlderRecords      bool                  `json:"has_older_records"`
 }
 
 // InstanceSnapshot represents the structured JSON saved in question_instance.snapshot_json.

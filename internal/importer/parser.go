@@ -3,6 +3,7 @@ package importer
 import (
 	"bytes"
 	"encoding/csv"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -49,11 +50,67 @@ func ParseRawInput(raw []byte, filename string) ([]ParsedEntry, error) {
 	// Remove UTF-8 BOM if present
 	raw = bytes.TrimPrefix(raw, []byte("\xef\xbb\xbf"))
 
-	isCSV := strings.HasSuffix(strings.ToLower(filename), ".csv")
-	if isCSV {
+	lowerName := strings.ToLower(filename)
+	if strings.HasSuffix(lowerName, ".csv") {
 		return parseCSV(raw)
 	}
+	if strings.HasSuffix(lowerName, ".json") {
+		return parseJSON(raw)
+	}
 	return parseTXT(raw)
+}
+
+func parseJSON(raw []byte) ([]ParsedEntry, error) {
+	// Try 1: []string e.g. ["apple", "banana"]
+	var strList []string
+	if err := json.Unmarshal(raw, &strList); err == nil {
+		return ParseWordSlice(strList)
+	}
+
+	// Try 2: struct with Words []string or Text string
+	var wrapper struct {
+		Words []string `json:"words"`
+		Text  string   `json:"text"`
+	}
+	if err := json.Unmarshal(raw, &wrapper); err == nil && (len(wrapper.Words) > 0 || strings.TrimSpace(wrapper.Text) != "") {
+		if len(wrapper.Words) > 0 {
+			return ParseWordSlice(wrapper.Words)
+		}
+		return parseTXT([]byte(wrapper.Text))
+	}
+
+	// Try 3: []struct { Word string; Lexeme string; SenseID *string }
+	var objList []struct {
+		Word    string  `json:"word"`
+		Lexeme  string  `json:"lexeme"`
+		SenseID *string `json:"sense_id"`
+	}
+	if err := json.Unmarshal(raw, &objList); err == nil && len(objList) > 0 {
+		if len(objList) > MaxImportRows {
+			return nil, ErrTooManyRows
+		}
+		var entries []ParsedEntry
+		ordinal := 0
+		for _, item := range objList {
+			w := item.Word
+			if w == "" {
+				w = item.Lexeme
+			}
+			trimmed := strings.TrimSpace(w)
+			if trimmed == "" {
+				continue
+			}
+			entry := validateAndBuildEntry(ordinal, trimmed, item.SenseID)
+			entries = append(entries, entry)
+			ordinal++
+		}
+		if len(entries) == 0 {
+			return nil, ErrEmptyInput
+		}
+		return entries, nil
+	}
+
+	return nil, errors.New("invalid JSON format: expected string array, words object, or entry object array")
 }
 
 func parseTXT(raw []byte) ([]ParsedEntry, error) {

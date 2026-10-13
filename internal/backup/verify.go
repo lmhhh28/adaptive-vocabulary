@@ -47,8 +47,8 @@ func (s *Service) VerifyBackup(ctx context.Context, inputDir string) (*VerifyRep
 		report.Checks["format_version"] = "ok"
 	}
 
-	if m.SchemaVersion > 90 {
-		report.Errors = append(report.Errors, fmt.Sprintf("unsupported future schema_version %d (current max 90)", m.SchemaVersion))
+	if m.SchemaVersion > 100 {
+		report.Errors = append(report.Errors, fmt.Sprintf("unsupported future schema_version %d (current max 100)", m.SchemaVersion))
 		report.Checks["schema_version"] = "failed"
 	} else if m.SchemaVersion < 0 {
 		report.Errors = append(report.Errors, fmt.Sprintf("invalid schema_version %d", m.SchemaVersion))

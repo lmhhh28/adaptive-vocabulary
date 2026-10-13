@@ -172,3 +172,71 @@ func TestRetireQuestionVersion_RevisionConflict(t *testing.T) {
 	}
 }
 
+func TestRetireQuestionVersion_ActiveSessionConflict(t *testing.T) {
+	db, svc, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	ctx := context.Background()
+
+	// Insert an open session
+	sessID := core.NewUUID()
+	now := time.Now().UTC().UnixNano() / 1000
+	_, err := db.DB.Exec(
+		"INSERT INTO session (id, kind, status, cursor, revision, created_at, updated_at) VALUES (?, 'practice', 'open', 0, 0, ?, ?)",
+		sessID, now, now,
+	)
+	if err != nil {
+		t.Fatalf("insert open session failed: %v", err)
+	}
+
+	var qvID string
+	err = db.DB.QueryRow("SELECT id FROM question_version LIMIT 1").Scan(&qvID)
+	if err != nil {
+		t.Fatalf("query question_version failed: %v", err)
+	}
+
+	// Must fail with ErrSessionActive
+	_, err = svc.RetireQuestionVersion(ctx, qvID, "retire active test", nil)
+	if err != revision.ErrSessionActive {
+		t.Fatalf("expected ErrSessionActive, got %v", err)
+	}
+
+	// Close session
+	_, err = db.DB.Exec("UPDATE session SET status = 'ended' WHERE id = ?", sessID)
+	if err != nil {
+		t.Fatalf("close session failed: %v", err)
+	}
+
+	// Now succeeds
+	resp, err := svc.RetireQuestionVersion(ctx, qvID, "retire active test", nil)
+	if err != nil {
+		t.Fatalf("retire failed after closing session: %v", err)
+	}
+	if resp.Status != "retired" {
+		t.Errorf("expected status retired, got %s", resp.Status)
+	}
+}
+
+func TestRetireQuestionVersion_UnderMaintenance(t *testing.T) {
+	db, svc, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	ctx := context.Background()
+
+	// Put into maintenance mode
+	_, err := db.DB.Exec("UPDATE projection_control SET mode = 'rebuilding' WHERE id = 1")
+	if err != nil {
+		t.Fatalf("set maintenance mode failed: %v", err)
+	}
+
+	var qvID string
+	err = db.DB.QueryRow("SELECT id FROM question_version LIMIT 1").Scan(&qvID)
+	if err != nil {
+		t.Fatalf("query question_version failed: %v", err)
+	}
+
+	_, err = svc.RetireQuestionVersion(ctx, qvID, "retire maint test", nil)
+	if err != core.ErrUnderMaintenance {
+		t.Fatalf("expected ErrUnderMaintenance, got %v", err)
+	}
+}

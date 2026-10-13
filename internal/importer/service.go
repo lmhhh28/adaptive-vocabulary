@@ -526,6 +526,76 @@ func (s *Service) ImportBankVocabulary(
 	return job, nil
 }
 
+// GetImportJob fetches the metadata and fresh counts for an import job.
+func (s *Service) GetImportJob(ctx context.Context, importID string) (*ImportJob, error) {
+	var job ImportJob
+	var srcVer sql.NullString
+	err := s.db.QueryRowContext(ctx, `
+		SELECT id, target_type, target_id, status, source_version, resolution_policy_version,
+		       raw_input_summary, total_count, resolved_count, ambiguous_count, not_found_count,
+		       invalid_count, excluded_count, revision, created_at, updated_at
+		FROM import_job
+		WHERE id = ?
+	`, importID).Scan(
+		&job.ID, &job.TargetType, &job.TargetID, &job.Status, &srcVer, &job.ResolutionPolicyVersion,
+		&job.RawInputSummary, &job.TotalCount, &job.ResolvedCount, &job.AmbiguousCount, &job.NotFoundCount,
+		&job.InvalidCount, &job.ExcludedCount, &job.Revision, &job.CreatedAt, &job.UpdatedAt,
+	)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, ErrImportNotFound
+	}
+	if err != nil {
+		return nil, fmt.Errorf("query import_job: %w", err)
+	}
+	if srcVer.Valid {
+		job.SourceVersion = srcVer.String
+	}
+
+	// Update with fresh counts from import_item
+	rowsCounts, err := s.db.QueryContext(ctx, `
+		SELECT status, COUNT(*)
+		FROM import_item
+		WHERE import_id = ?
+		GROUP BY status
+	`, importID)
+	if err == nil {
+		resolved := 0
+		ambiguous := 0
+		notFound := 0
+		invalid := 0
+		excluded := 0
+		total := 0
+		for rowsCounts.Next() {
+			var st string
+			var c int
+			if err := rowsCounts.Scan(&st, &c); err == nil {
+				total += c
+				switch st {
+				case "resolved":
+					resolved = c
+				case "ambiguous":
+					ambiguous = c
+				case "not_found":
+					notFound = c
+				case "invalid":
+					invalid = c
+				case "excluded":
+					excluded = c
+				}
+			}
+		}
+		rowsCounts.Close()
+		job.TotalCount = total
+		job.ResolvedCount = resolved
+		job.AmbiguousCount = ambiguous
+		job.NotFoundCount = notFound
+		job.InvalidCount = invalid
+		job.ExcludedCount = excluded
+	}
+
+	return &job, nil
+}
+
 // GetImportItems fetches items for an import job with optional status filter.
 func (s *Service) GetImportItems(
 	ctx context.Context,

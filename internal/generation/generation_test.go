@@ -3,7 +3,11 @@ package generation
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
+	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"testing"
 	"time"
@@ -865,4 +869,143 @@ func TestClaimItemsEnforcesMaxConcurrentItemsAcrossWorkers(t *testing.T) {
 		t.Fatalf("expected 0 items claimed by worker 2, got %d", len(claim2.Items))
 	}
 }
+
+func TestListJobsAndQualityFindingsPagination(t *testing.T) {
+	db, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	policy := DefaultGenerationConfig()
+	svc := NewService(db, policy)
+	ctx := context.Background()
+	now := time.Now().UTC().UnixMicro()
+
+	var bankID string
+	var bankRev int
+	err := db.QueryRow("SELECT id, revision FROM bank WHERE name = '开发样例'").Scan(&bankID, &bankRev)
+	if err != nil {
+		t.Fatalf("query bank: %v", err)
+	}
+
+	var senseID, senseVersionID string
+	_ = db.QueryRow("SELECT s.id, sv.id FROM sense s JOIN sense_version sv ON sv.sense_id = s.id JOIN bank_sense bs ON bs.sense_id = s.id WHERE bs.bank_id = ? LIMIT 1", bankID).
+		Scan(&senseID, &senseVersionID)
+
+	// Create 3 jobs
+	for i := 0; i < 3; i++ {
+		curRev := bankRev + i
+		_, _, err := svc.CreateJob(ctx, bankID, CreateJobRequest{
+			SenseRefs:               []SenseRef{{SenseID: senseID, SenseVersionID: senseVersionID}},
+			GenerationConfigVersion: "v1",
+			QualityPolicyVersion:    "v1",
+			ExpectedRevision:        curRev,
+		}, fmt.Sprintf("idemp-key-%d", i), "", now+int64(i*1000))
+		if err != nil {
+			t.Fatalf("create job %d: %v", i, err)
+		}
+	}
+
+	// Test ListJobs
+	jobs, err := svc.ListJobs(ctx, bankID, 0, "", 2)
+	if err != nil {
+		t.Fatalf("list jobs: %v", err)
+	}
+	if len(jobs) != 2 {
+		t.Fatalf("expected 2 jobs, got %d", len(jobs))
+	}
+
+	// Page 2
+	jobsPage2, err := svc.ListJobs(ctx, bankID, jobs[1].CreatedAt, jobs[1].ID, 2)
+	if err != nil {
+		t.Fatalf("list jobs page 2: %v", err)
+	}
+	if len(jobsPage2) != 1 {
+		t.Fatalf("expected 1 job on page 2, got %d", len(jobsPage2))
+	}
+
+	// Query item_id for jobs[0].ID
+	var itemID string
+	err = db.QueryRow("SELECT id FROM generation_item WHERE job_id = ? LIMIT 1", jobs[0].ID).Scan(&itemID)
+	if err != nil {
+		t.Fatalf("query item: %v", err)
+	}
+
+	candID := "cand-test-0"
+	_, err = db.Exec(`
+		INSERT INTO question_candidate (id, item_id, job_id, attempt_number, candidate_index, content_json, generation_metadata_json, checks_json, disposition, created_at, updated_at)
+		VALUES (?, ?, ?, 1, 0, '{}', '{}', '{}', 'rejected', ?, ?)
+	`, candID, itemID, jobs[0].ID, now, now)
+	if err != nil {
+		t.Fatalf("insert candidate: %v", err)
+	}
+
+	// Insert 3 quality findings
+	for i := 0; i < 3; i++ {
+		_, err := db.Exec(`
+			INSERT INTO quality_finding (id, job_id, candidate_id, finding_type, details_json, checker_version, status, revision, created_at, updated_at)
+			VALUES (?, ?, ?, 'grammar', '{}', 'v1', 'open', 1, ?, ?)
+		`, fmt.Sprintf("finding-%d", i), jobs[0].ID, candID, now+int64(i*1000), now+int64(i*1000))
+		if err != nil {
+			t.Fatalf("insert finding %d: %v", i, err)
+		}
+	}
+
+	// Test ListQualityFindings
+	findings, err := svc.ListQualityFindings(ctx, "", "", "", 0, "", 2)
+	if err != nil {
+		t.Fatalf("list findings: %v", err)
+	}
+	if len(findings) != 2 {
+		t.Fatalf("expected 2 findings, got %d", len(findings))
+	}
+
+	// Test HTTP Handler
+	handler := NewHandler(db, policy, "test-token")
+
+	// Test GET /api/v1/generation-jobs
+	req := httptest.NewRequest("GET", "/api/v1/generation-jobs?limit=2", nil)
+	rec := httptest.NewRecorder()
+	handler.HandleListJobs(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+	var listResp struct {
+		Items      []JobSummary `json:"items"`
+		NextCursor *string      `json:"next_cursor"`
+		HasMore    bool         `json:"has_more"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&listResp); err != nil {
+		t.Fatalf("decode list jobs: %v", err)
+	}
+	if len(listResp.Items) != 2 || !listResp.HasMore || listResp.NextCursor == nil {
+		t.Fatalf("expected 2 items, has_more=true, next_cursor non-nil, got %+v", listResp)
+	}
+
+	// Test invalid cursor returns 400
+	badReq := httptest.NewRequest("GET", "/api/v1/generation-jobs?cursor=invalid_base64!!!", nil)
+	badRec := httptest.NewRecorder()
+	handler.HandleListJobs(badRec, badReq)
+	if badRec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for bad cursor, got %d", badRec.Code)
+	}
+
+	// Test GET /api/v1/quality-findings
+	qReq := httptest.NewRequest("GET", "/api/v1/quality-findings?limit=2", nil)
+	qRec := httptest.NewRecorder()
+	handler.HandleListQualityFindings(qRec, qReq)
+	if qRec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", qRec.Code)
+	}
+	var qResp struct {
+		Items      []QualityFindingItem `json:"items"`
+		NextCursor *string              `json:"next_cursor"`
+		HasMore    bool                 `json:"has_more"`
+	}
+	if err := json.NewDecoder(qRec.Body).Decode(&qResp); err != nil {
+		t.Fatalf("decode quality findings: %v", err)
+	}
+	if len(qResp.Items) != 2 || !qResp.HasMore || qResp.NextCursor == nil {
+		t.Fatalf("expected 2 findings, has_more=true, next_cursor non-nil, got %+v", qResp)
+	}
+}
+
 

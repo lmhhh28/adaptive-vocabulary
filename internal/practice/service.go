@@ -20,6 +20,7 @@ var (
 	ErrSessionNotFound  = errors.New("session not found")
 	ErrSessionClosed    = errors.New("session is closed")
 	ErrInstanceNotFound = errors.New("instance not found")
+	ErrNotAnswered      = errors.New("question not answered")
 	ErrInvalidOption    = errors.New("invalid option for this instance")
 	ErrInvalidRequest   = errors.New("invalid request")
 	ErrMaintenance      = errors.New("system under maintenance")
@@ -228,10 +229,63 @@ func (s *Service) GetSessionDetail(ctx context.Context, sessionID string) (*Prac
 	}
 
 	detail := &PracticeSessionDetail{
-		Session: &sess,
+		Session:       &sess,
+		RecentRecords: []AnswerRecord{},
+		Summary: PracticeCountsSummary{
+			CountsScope:    "accepted_attempts",
+			AnsweredCount:  0,
+			CorrectCount:   0,
+			IncorrectCount: 0,
+		},
 	}
 
-	// Check question instance at current cursor
+	// 1. Calculate Summary
+	querySummary := `
+		SELECT
+			COUNT(*),
+			COALESCE(SUM(CASE WHEN is_correct = 1 THEN 1 ELSE 0 END), 0),
+			COALESCE(SUM(CASE WHEN is_correct = 0 THEN 1 ELSE 0 END), 0)
+		FROM attempt_event
+		WHERE session_id = ?
+	`
+	_ = s.db.QueryRowContext(ctx, querySummary, sessionID).Scan(
+		&detail.Summary.AnsweredCount,
+		&detail.Summary.CorrectCount,
+		&detail.Summary.IncorrectCount,
+	)
+
+	// 2. Fetch RecentRecords (up to 30 items, ascending by ordinal)
+	queryRecent := `
+		SELECT qi.id, qi.ordinal, ae.is_correct
+		FROM attempt_event ae
+		JOIN question_instance qi ON ae.instance_id = qi.id
+		WHERE ae.session_id = ?
+		ORDER BY qi.ordinal DESC
+		LIMIT 30
+	`
+	rows, err := s.db.QueryContext(ctx, queryRecent, sessionID)
+	if err == nil {
+		defer rows.Close()
+		var descRecords []AnswerRecord
+		for rows.Next() {
+			var r AnswerRecord
+			var isCorr int
+			if err := rows.Scan(&r.InstanceID, &r.Ordinal, &isCorr); err == nil {
+				r.Correct = isCorr == 1
+				descRecords = append(descRecords, r)
+			}
+		}
+		// Reverse to ascending order
+		n := len(descRecords)
+		ascRecords := make([]AnswerRecord, n)
+		for i, rec := range descRecords {
+			ascRecords[n-1-i] = rec
+		}
+		detail.RecentRecords = ascRecords
+	}
+	detail.HasOlderRecords = detail.Summary.AnsweredCount > len(detail.RecentRecords)
+
+	// 3. Check question instance at current cursor
 	queryInst := `
 		SELECT qi.id, qi.ordinal, qi.normal_position, qi.snapshot_json
 		FROM question_instance qi
@@ -244,15 +298,10 @@ func (s *Service) GetSessionDetail(ctx context.Context, sessionID string) (*Prac
 		snapshotStr string
 	)
 	err = s.db.QueryRowContext(ctx, queryInst, sessionID, sess.Cursor).Scan(&instID, &ordinal, &normalPos, &snapshotStr)
+	hasUnansweredCurrent := false
 	if err == nil {
-		// Check if attempt exists
-		var (
-			attID      string
-			selectedID sql.NullString
-			isCorrect  int
-		)
-		queryAtt := `SELECT id, selected_option_id, is_correct FROM attempt_event WHERE instance_id = ?`
-		attErr := s.db.QueryRowContext(ctx, queryAtt, instID).Scan(&attID, &selectedID, &isCorrect)
+		var dummyID string
+		attErr := s.db.QueryRowContext(ctx, `SELECT id FROM attempt_event WHERE instance_id = ?`, instID).Scan(&dummyID)
 		if errors.Is(attErr, sql.ErrNoRows) {
 			// Unanswered instance -> populate CurrentQuestion
 			var snap InstanceSnapshot
@@ -271,24 +320,439 @@ func (s *Service) GetSessionDetail(ctx context.Context, sessionID string) (*Prac
 					Stem:       snap.Stem,
 					Options:    publicOpts,
 				}
+				hasUnansweredCurrent = true
 			}
-		} else if attErr == nil {
-			// Answered -> populate LastFeedback
+		}
+	}
+
+	// 4. Populate LastAnsweredQuestion and LastFeedback if no unanswered current question
+	if !hasUnansweredCurrent && detail.Summary.AnsweredCount > 0 {
+		queryLastAnswered := `
+			SELECT qi.id, qi.ordinal, qi.snapshot_json, ae.id, ae.selected_option_id, ae.is_correct
+			FROM attempt_event ae
+			JOIN question_instance qi ON ae.instance_id = qi.id
+			WHERE ae.session_id = ?
+			ORDER BY qi.ordinal DESC
+			LIMIT 1
+		`
+		var (
+			lastInstID    string
+			lastOrdinal   int64
+			lastSnapStr   string
+			lastAttID     string
+			lastSelOptID  sql.NullString
+			lastIsCorrect int
+		)
+		err := s.db.QueryRowContext(ctx, queryLastAnswered, sessionID).Scan(
+			&lastInstID,
+			&lastOrdinal,
+			&lastSnapStr,
+			&lastAttID,
+			&lastSelOptID,
+			&lastIsCorrect,
+		)
+		if err == nil {
 			var snap InstanceSnapshot
-			if err := json.Unmarshal([]byte(snapshotStr), &snap); err == nil {
-				detail.LastFeedback = &AttemptFeedback{
-					AttemptID:       attID,
-					Correct:         isCorrect == 1,
+			if err := json.Unmarshal([]byte(lastSnapStr), &snap); err == nil {
+				publicOpts := make([]PublicOption, len(snap.Options))
+				for i, opt := range snap.Options {
+					publicOpts[i] = PublicOption{
+						ID:   opt.ID,
+						Text: opt.Text,
+					}
+				}
+				q := PublicQuestion{
+					InstanceID: lastInstID,
+					Ordinal:    lastOrdinal,
+					TaskFamily: snap.TaskFamily,
+					Stem:       snap.Stem,
+					Options:    publicOpts,
+				}
+				fb := AttemptFeedback{
+					AttemptID:       lastAttID,
+					Correct:         lastIsCorrect == 1,
 					CorrectOptionID: snap.CorrectOptionID,
 					Explanation:     snap.Explanation,
-					NextCursor:      ordinal + 1,
+					NextCursor:      lastOrdinal + 1,
 					SessionRevision: sess.Revision,
 				}
+				detail.LastAnsweredQuestion = &AcceptedAnswer{
+					Question:         q,
+					SelectedOptionID: lastSelOptID.String,
+					Feedback:         fb,
+				}
+				detail.LastFeedback = &fb
 			}
 		}
 	}
 
 	return detail, nil
+}
+
+// GetAnswerRecords handles GET /api/v1/practice-sessions/{id}/answer-records.
+func (s *Service) GetAnswerRecords(
+	ctx context.Context,
+	sessionID string,
+	beforeOrdinal *int64,
+	limit int,
+) (*AnswerRecordsResult, error) {
+	if limit <= 0 {
+		limit = 30
+	} else if limit > 100 {
+		limit = 100
+	}
+
+	// 1. Verify session exists
+	var sessRevision int64
+	err := s.db.QueryRowContext(ctx, `SELECT revision FROM session WHERE id = ?`, sessionID).Scan(&sessRevision)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, ErrSessionNotFound
+	}
+	if err != nil {
+		return nil, fmt.Errorf("query session revision: %w", err)
+	}
+
+	// 2. Summary
+	var summary PracticeCountsSummary
+	summary.CountsScope = "accepted_attempts"
+	querySummary := `
+		SELECT
+			COUNT(*),
+			COALESCE(SUM(CASE WHEN is_correct = 1 THEN 1 ELSE 0 END), 0),
+			COALESCE(SUM(CASE WHEN is_correct = 0 THEN 1 ELSE 0 END), 0)
+		FROM attempt_event
+		WHERE session_id = ?
+	`
+	_ = s.db.QueryRowContext(ctx, querySummary, sessionID).Scan(
+		&summary.AnsweredCount,
+		&summary.CorrectCount,
+		&summary.IncorrectCount,
+	)
+
+	// 3. Query items
+	var (
+		rows *sql.Rows
+		qErr error
+	)
+	if beforeOrdinal != nil {
+		queryItems := `
+			SELECT qi.id, qi.ordinal, ae.is_correct
+			FROM attempt_event ae
+			JOIN question_instance qi ON ae.instance_id = qi.id
+			WHERE ae.session_id = ? AND qi.ordinal < ?
+			ORDER BY qi.ordinal DESC
+			LIMIT ?
+		`
+		rows, qErr = s.db.QueryContext(ctx, queryItems, sessionID, *beforeOrdinal, limit)
+	} else {
+		queryItems := `
+			SELECT qi.id, qi.ordinal, ae.is_correct
+			FROM attempt_event ae
+			JOIN question_instance qi ON ae.instance_id = qi.id
+			WHERE ae.session_id = ?
+			ORDER BY qi.ordinal DESC
+			LIMIT ?
+		`
+		rows, qErr = s.db.QueryContext(ctx, queryItems, sessionID, limit)
+	}
+	if qErr != nil {
+		return nil, fmt.Errorf("query answer records: %w", qErr)
+	}
+	defer rows.Close()
+
+	var descRecords []AnswerRecord
+	for rows.Next() {
+		var r AnswerRecord
+		var isCorr int
+		if err := rows.Scan(&r.InstanceID, &r.Ordinal, &isCorr); err != nil {
+			return nil, fmt.Errorf("scan answer record: %w", err)
+		}
+		r.Correct = isCorr == 1
+		descRecords = append(descRecords, r)
+	}
+
+	// Reverse to ascending order
+	n := len(descRecords)
+	items := make([]AnswerRecord, n)
+	for i, rec := range descRecords {
+		items[n-1-i] = rec
+	}
+
+	result := &AnswerRecordsResult{
+		Items:           items,
+		Summary:         summary,
+		SessionRevision: sessRevision,
+	}
+
+	// 4. Next before ordinal and has_more
+	if len(items) > 0 {
+		minOrdinal := items[0].Ordinal
+		var hasOlder int
+		checkErr := s.db.QueryRowContext(
+			ctx,
+			`SELECT 1 FROM attempt_event ae JOIN question_instance qi ON ae.instance_id = qi.id WHERE ae.session_id = ? AND qi.ordinal < ? LIMIT 1`,
+			sessionID,
+			minOrdinal,
+		).Scan(&hasOlder)
+		if checkErr == nil {
+			result.HasMore = true
+			result.NextBeforeOrdinal = &minOrdinal
+		} else {
+			result.HasMore = false
+			result.NextBeforeOrdinal = nil
+		}
+	} else {
+		result.HasMore = false
+		result.NextBeforeOrdinal = nil
+	}
+
+	return result, nil
+}
+
+// GetAnsweredQuestion handles GET /api/v1/practice-sessions/{id}/answered-questions/{ordinal}.
+func (s *Service) GetAnsweredQuestion(ctx context.Context, sessionID string, ordinal int64) (*AcceptedAnswer, error) {
+	// 1. Check session existence
+	var sessRevision int64
+	err := s.db.QueryRowContext(ctx, `SELECT revision FROM session WHERE id = ?`, sessionID).Scan(&sessRevision)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, ErrSessionNotFound
+	}
+	if err != nil {
+		return nil, fmt.Errorf("query session: %w", err)
+	}
+
+	// 2. Active session protection:
+	// "若另有活动作答会话，禁止读取其他会话的答案正文；同一活动练习允许本轮已答回看。"
+	active, err := core.GetActiveSession(s.db)
+	if err != nil {
+		return nil, fmt.Errorf("check active session: %w", err)
+	}
+	if active != nil && active.ID != sessionID {
+		return nil, &ActiveSessionConflictError{ActiveSession: active}
+	}
+
+	// 3. Query answered question instance and attempt
+	queryAnswered := `
+		SELECT qi.id, qi.ordinal, qi.snapshot_json, ae.id, ae.selected_option_id, ae.is_correct
+		FROM question_instance qi
+		JOIN attempt_event ae ON ae.instance_id = qi.id
+		WHERE qi.session_id = ? AND qi.ordinal = ?
+	`
+	var (
+		instID      string
+		ord         int64
+		snapshotStr string
+		attID       string
+		selOptID    sql.NullString
+		isCorrect   int
+	)
+	err = s.db.QueryRowContext(ctx, queryAnswered, sessionID, ordinal).Scan(
+		&instID,
+		&ord,
+		&snapshotStr,
+		&attID,
+		&selOptID,
+		&isCorrect,
+	)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, ErrNotAnswered
+	}
+	if err != nil {
+		return nil, fmt.Errorf("query answered question: %w", err)
+	}
+
+	var snap InstanceSnapshot
+	if err := json.Unmarshal([]byte(snapshotStr), &snap); err != nil {
+		return nil, fmt.Errorf("unmarshal snapshot: %w", err)
+	}
+
+	publicOpts := make([]PublicOption, len(snap.Options))
+	for i, opt := range snap.Options {
+		publicOpts[i] = PublicOption{
+			ID:   opt.ID,
+			Text: opt.Text,
+		}
+	}
+
+	return &AcceptedAnswer{
+		Question: PublicQuestion{
+			InstanceID: instID,
+			Ordinal:    ord,
+			TaskFamily: snap.TaskFamily,
+			Stem:       snap.Stem,
+			Options:    publicOpts,
+		},
+		SelectedOptionID: selOptID.String,
+		Feedback: AttemptFeedback{
+			AttemptID:       attID,
+			Correct:         isCorrect == 1,
+			CorrectOptionID: snap.CorrectOptionID,
+			Explanation:     snap.Explanation,
+			NextCursor:      ord + 1,
+			SessionRevision: sessRevision,
+		},
+	}, nil
+}
+
+// RecordFeedbackView handles POST /api/v1/practice-sessions/{id}/feedback-views.
+func (s *Service) RecordFeedbackView(
+	ctx context.Context,
+	sessionID string,
+	req FeedbackViewRequest,
+	idempotencyKey string,
+	requestDigest string,
+) (*FeedbackViewResult, bool, error) {
+	if req.Presentation != "history" && req.Presentation != "restored_feedback" {
+		return nil, false, ErrInvalidRequest
+	}
+	if req.ClientEventID == "" || req.InstanceID == "" {
+		return nil, false, ErrInvalidRequest
+	}
+
+	var (
+		res        *FeedbackViewResult
+		isReplayed bool
+	)
+
+	err := core.RunInTx(ctx, s.db, func(tc *core.TxnContext) error {
+		// 1. Maintenance check
+		if err := core.CheckMaintenance(tc); err != nil {
+			return ErrMaintenance
+		}
+
+		// 2. Idempotency check
+		scope := fmt.Sprintf("/api/v1/practice-sessions/%s/feedback-views", sessionID)
+		if idempotencyKey != "" {
+			rec, err := core.CheckIdempotency(tc, "POST", scope, idempotencyKey, requestDigest)
+			if errors.Is(err, core.ErrIdempotencyConflict) {
+				return err
+			}
+			if err != nil {
+				return fmt.Errorf("check idempotency: %w", err)
+			}
+			if rec != nil {
+				isReplayed = true
+				var cached FeedbackViewResult
+				if err := json.Unmarshal([]byte(rec.ResponseBody), &cached); err == nil {
+					res = &cached
+					return nil
+				}
+			}
+		}
+
+		// 3. Verify session exists (even if ended, allowed!)
+		var sessExists int
+		err := tc.QueryRow(`SELECT 1 FROM session WHERE id = ?`, sessionID).Scan(&sessExists)
+		if errors.Is(err, sql.ErrNoRows) {
+			return ErrSessionNotFound
+		}
+		if err != nil {
+			return fmt.Errorf("query session: %w", err)
+		}
+
+		// 4. Verify question instance belongs to session and has an accepted attempt
+		queryInst := `
+			SELECT qi.question_version_id, qv.sense_id, s.lexeme_id, qv.form_id
+			FROM question_instance qi
+			JOIN question_version qv ON qi.question_version_id = qv.id
+			JOIN sense s ON qv.sense_id = s.id
+			JOIN attempt_event ae ON ae.instance_id = qi.id
+			WHERE qi.id = ? AND qi.session_id = ?
+		`
+		var (
+			qvID     string
+			senseID  string
+			lexemeID string
+			formID   string
+		)
+		err = tc.QueryRow(queryInst, req.InstanceID, sessionID).Scan(&qvID, &senseID, &lexemeID, &formID)
+		if errors.Is(err, sql.ErrNoRows) {
+			// Check if instance exists at all in this session
+			var instExists int
+			chkErr := tc.QueryRow(`SELECT 1 FROM question_instance WHERE id = ? AND session_id = ?`, req.InstanceID, sessionID).Scan(&instExists)
+			if errors.Is(chkErr, sql.ErrNoRows) {
+				return ErrInstanceNotFound
+			}
+			return ErrNotAnswered
+		}
+		if err != nil {
+			return fmt.Errorf("verify instance attempt: %w", err)
+		}
+
+		// 5. Allocate global sequence
+		now := time.Now().UTC()
+		nowMicro := now.UnixNano() / 1000
+		seqRes, err := tc.Exec("INSERT INTO global_sequence (event_name, created_at) VALUES ('practice_feedback_view', ?)", nowMicro)
+		if err != nil {
+			return fmt.Errorf("allocate global sequence: %w", err)
+		}
+		eventSeq, err := seqRes.LastInsertId()
+		if err != nil {
+			return fmt.Errorf("get sequence id: %w", err)
+		}
+
+		// 6. Insert practice_feedback_view
+		viewID := core.NewUUID()
+		recordedAtStr := now.Format(time.RFC3339)
+		queryInsert := `
+			INSERT INTO practice_feedback_view (
+				id, session_id, instance_id, client_event_id, presentation,
+				question_version_id, sense_id, lexeme_id, form_id,
+				client_displayed_at, recorded_at, event_sequence, created_at
+			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		`
+		_, err = tc.Exec(
+			queryInsert,
+			viewID,
+			sessionID,
+			req.InstanceID,
+			req.ClientEventID,
+			req.Presentation,
+			qvID,
+			senseID,
+			lexemeID,
+			formID,
+			req.ClientDisplayedAt,
+			recordedAtStr,
+			eventSeq,
+			nowMicro,
+		)
+		if err != nil {
+			return fmt.Errorf("insert feedback view: %w", err)
+		}
+
+		res = &FeedbackViewResult{
+			ViewID:        viewID,
+			ClientEventID: req.ClientEventID,
+			EventSequence: eventSeq,
+			RecordedAt:    recordedAtStr,
+		}
+
+		// 7. Save idempotency record
+		if idempotencyKey != "" {
+			respBytes, _ := json.Marshal(res)
+			idempRec := &core.IdempotencyRecord{
+				Operation:     "POST",
+				ResourceScope: scope,
+				Key:           idempotencyKey,
+				RequestDigest: requestDigest,
+				Status:        "committed",
+				ResponseCode:  201,
+				ResponseBody:  string(respBytes),
+				CreatedAt:     nowMicro,
+			}
+			if err := core.SaveIdempotencyRecord(tc, idempRec); err != nil {
+				return fmt.Errorf("save idempotency: %w", err)
+			}
+		}
+
+		return nil
+	})
+
+	if err != nil {
+		return nil, false, err
+	}
+	return res, isReplayed, nil
 }
 
 // NextQuestion handles POST /api/v1/practice-sessions/{id}/next.

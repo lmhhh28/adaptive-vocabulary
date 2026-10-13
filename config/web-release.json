@@ -1,0 +1,37 @@
+{
+  "design_version": "web-design-v1.1",
+  "release_version": "1.1.0",
+  "name": "adaptive-vocabulary-web",
+  "binary": "bin/avocab",
+  "dist_dir": "web/frontend/dist",
+  "entry_path": "/",
+  "modules": [
+    "W00",
+    "W01",
+    "W02",
+    "W03",
+    "W04",
+    "W05",
+    "W06",
+    "W07",
+    "W08"
+  ],
+  "runtime_processes": [
+    "go",
+    "chromium",
+    "langgraph-worker",
+    "local-http-provider"
+  ],
+  "asset_headers": {
+    "/assets/": "public, max-age=31536000, immutable",
+    "/": "no-store",
+    "/client-context": "no-store"
+  },
+  "acceptance_cases": [
+    "W08-01",
+    "W08-02",
+    "W08-03",
+    "W08-04",
+    "W08-05"
+  ]
+}

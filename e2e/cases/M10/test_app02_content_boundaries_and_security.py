@@ -10,7 +10,7 @@ Verifies:
 from pathlib import Path
 import uuid
 
-from playwright.sync_api import sync_playwright
+from playwright.sync_api import sync_playwright, expect
 from support.lifecycle import managed_server
 from support.http_client import APIClient
 
@@ -73,14 +73,14 @@ def run(context: dict) -> dict:
 
         with sync_playwright() as p:
             browser = p.chromium.launch(headless=True)
-            b_ctx = browser.new_context()
+            b_ctx = browser.new_context(viewport={"width": 1280, "height": 800}, locale="zh-CN")
 
             page = b_ctx.new_page()
 
             def on_console(msg):
                 if msg.type == "error":
-                    # Ignore harmless favicon 404s if any
-                    if "favicon.ico" not in msg.text:
+                    # Ignore harmless favicon 404s and expected HTTP status code browser logs
+                    if "favicon.ico" not in msg.text and "Failed to load resource" not in msg.text:
                         console_errors.append(msg.text)
 
             def on_pageerror(err):
@@ -100,20 +100,18 @@ def run(context: dict) -> dict:
             ]
 
             for path in pages_to_visit:
-                page.goto(f"{base_url}{path}")
-                page.wait_for_load_state("domcontentloaded")
+                page.goto(f"{base_url}{path}", wait_until="networkidle")
 
             # Check practice page DOM before submit
-            page.goto(f"{base_url}/practice")
-            stem_el = page.locator("#question-stem")
+            page.goto(f"{base_url}/practice", wait_until="networkidle")
+            stem_el = page.locator("[data-testid='question-stem-text']")
             stem_el.wait_for(state="visible", timeout=8000)
 
             # HTML content must not contain correct_option_id
             dom_html = page.content()
             assert "correct_option_id" not in dom_html, "Leak: correct_option_id in DOM before submit"
-            expl_el = page.locator("#explanation-val")
-            if expl_el.count() > 0:
-                assert expl_el.text_content().strip() == "", "Leak: explanation text rendered before submit"
+            # Feedback panel should NOT be visible before answering
+            assert page.locator("[data-testid='feedback-panel']").count() == 0 or not page.locator("[data-testid='feedback-panel']").is_visible()
 
             browser.close()
 

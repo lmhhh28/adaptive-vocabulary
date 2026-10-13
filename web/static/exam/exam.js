@@ -275,7 +275,7 @@ function initNewExamView() {
                 const data = await res.json();
                 window.location.href = `/exams/${data.exam_id}`;
             } else {
-                const err = await res.json();
+                const err = await res.json().catch(() => ({}));
                 alert(`组卷失败：${err.error?.message || res.statusText}`);
                 btn.disabled = false;
                 btn.textContent = '开始组卷考试';
@@ -330,6 +330,7 @@ async function initTakeExamView(examID) {
     if (examData.deadline) {
         const deadlineMs = new Date(examData.deadline).getTime();
         const timerEl = document.getElementById('exam-timer');
+        let timerInterval;
         const updateTimer = () => {
             const now = Date.now();
             const remainSec = Math.max(0, Math.floor((deadlineMs - now) / 1000));
@@ -339,12 +340,13 @@ async function initTakeExamView(examID) {
                 timerEl.textContent = `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
             }
             if (remainSec <= 0) {
+                clearInterval(timerInterval);
                 alert('考试时间已到，系统正在自动交卷...');
                 submitExamAction();
             }
         };
         updateTimer();
-        setInterval(updateTimer, 1000);
+        timerInterval = setInterval(updateTimer, 1000);
     } else {
         const timerWrap = document.getElementById('timer-wrap');
         if (timerWrap) timerWrap.style.display = 'none';
@@ -392,8 +394,9 @@ async function initTakeExamView(examID) {
 
             item.innerHTML = `
                 <div class="option-prefix">${letters[idx] || ''}</div>
-                <div class="option-text">${opt.text}</div>
+                <div class="option-text"></div>
             `;
+            item.querySelector('.option-text').textContent = opt.text;
 
             item.addEventListener('click', () => {
                 if (draftsMap[q.instance_id] === opt.id) return; // already selected
@@ -494,7 +497,7 @@ async function initTakeExamView(examID) {
                 const data = await res.json();
                 window.location.href = data.result_url || `/exams/${examID}/result`;
             } else {
-                const err = await res.json();
+                const err = await res.json().catch(() => ({}));
                 alert(`交卷失败：${err.error?.message || res.statusText}`);
                 if (btn) btn.disabled = false;
             }
@@ -595,32 +598,62 @@ async function initResultView(examID) {
 
         card.className = `result-question-item ${statusClass}`;
 
-        let optionsHTML = '';
+        const headerDiv = document.createElement('div');
+        headerDiv.className = 'result-q-header';
+        
+        const boldSpan = document.createElement('span');
+        boldSpan.className = 'font-bold';
+        boldSpan.textContent = `第 ${idx + 1} 题 (${q.task_family})`;
+        
+        const badgeSpan = document.createElement('span');
+        badgeSpan.className = `badge ${q.is_correct ? 'badge-primary' : 'badge-secondary'}`;
+        badgeSpan.textContent = statusText;
+        
+        headerDiv.appendChild(boldSpan);
+        headerDiv.appendChild(badgeSpan);
+        
+        const stemDiv = document.createElement('div');
+        stemDiv.style.cssText = 'font-size: 1.1rem; margin-bottom: 0.75rem;';
+        stemDiv.textContent = q.stem;
+        
+        const optionsDiv = document.createElement('div');
+        optionsDiv.className = 'result-options';
+        optionsDiv.style.marginLeft = '0.5rem';
+        
         const letters = ['A', 'B', 'C', 'D'];
         q.options.forEach((opt, oIdx) => {
-            let tag = '';
+            const optDiv = document.createElement('div');
+            optDiv.style.margin = '0.35rem 0';
+            optDiv.textContent = `${letters[oIdx]}. ${opt.text}`;
+            
             if (opt.id === q.correct_option_id) {
-                tag = ' <strong style="color: #10b981;">[正确答案]</strong>';
+                const tag1 = document.createElement('strong');
+                tag1.style.color = '#10b981';
+                tag1.textContent = ' [正确答案]';
+                optDiv.appendChild(tag1);
             }
             if (opt.id === q.selected_option_id) {
-                tag += ' <span style="color: #3b82f6;">[您的选择]</span>';
+                const tag2 = document.createElement('span');
+                tag2.style.color = '#3b82f6';
+                tag2.textContent = ' [您的选择]';
+                optDiv.appendChild(tag2);
             }
-            optionsHTML += `<div style="margin: 0.35rem 0;">${letters[oIdx]}. ${opt.text}${tag}</div>`;
+            optionsDiv.appendChild(optDiv);
         });
 
-        card.innerHTML = `
-            <div class="result-q-header">
-                <span class="font-bold">第 ${idx + 1} 题 (${q.task_family})</span>
-                <span class="badge ${q.is_correct ? 'badge-primary' : 'badge-secondary'}">${statusText}</span>
-            </div>
-            <div style="font-size: 1.1rem; margin-bottom: 0.75rem;">${q.stem}</div>
-            <div class="result-options" style="margin-left: 0.5rem;">
-                ${optionsHTML}
-            </div>
-            <div class="result-explanation">
-                <strong>解析：</strong>${q.explanation || '暂无详细解析'}
-            </div>
-        `;
+        const explanationDiv = document.createElement('div');
+        explanationDiv.className = 'result-explanation';
+        
+        const explStrong = document.createElement('strong');
+        explStrong.textContent = '解析：';
+        explanationDiv.appendChild(explStrong);
+        
+        explanationDiv.appendChild(document.createTextNode(q.explanation || '暂无详细解析'));
+        
+        card.appendChild(headerDiv);
+        card.appendChild(stemDiv);
+        card.appendChild(optionsDiv);
+        card.appendChild(explanationDiv);
 
         listEl.appendChild(card);
     });

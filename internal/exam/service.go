@@ -1013,7 +1013,7 @@ func (s *Service) submitExamInternal(tc *core.TxnContext, examID string, submiss
 		}
 
 		// First choice correctness
-		if it.FirstOptionID.Valid && it.IsFirstReliable == 1 {
+		if it.FirstOptionID.Valid && it.IsFirstReliable == 1 && telemetryIncomplete == 0 {
 			fc := (it.FirstOptionID.String == it.Snapshot.CorrectOptionID)
 			it.FirstCorrect = &fc
 		}

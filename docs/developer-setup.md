@@ -13,7 +13,7 @@ Adaptive Vocabulary 采用**零污染、自包含沙盒工具链**架构设计�
 *   **运行时基线**：
     *   **Go 端**：采用纯 Go 实现的 `modernc.org/sqlite`（内置 SQLite 3.53.4），无需本地 C/C++ 编译器（无 CGO 依赖）。
     *   **Python 端**：由 `uv` 自动下载并管理独立的 CPython 3.13.15（内置 SQLite 3.53.1），严格隔离于 `worker/.venv/` 和 `e2e/.venv/`。
-    *   **前端**：Go 标准库 HTML 模板驱动 + 浏览器原生 ES Modules 与 CSS，零前端构建步骤。
+    *   **前端**：React 18 + TypeScript + Ant Design v5 SPA 单页现代化架构，预编译产物通过 Go 标准库 `embed.FS` 完整内嵌至单体 Go 二进制；生产与日常运行零 Node.js 依赖。前端二次开发支持通过 `make web-build`（或在 `web/frontend/` 执行 `npm run build`）重新构建。
 
 ---
 
@@ -169,14 +169,26 @@ make check-browser
 ```
 测试通过会在 `artifacts/browser-check/` 下生成截图与跟踪日志。
 
-#### 执行真实进程 E2E 回归测试：
+#### 执行现代 Web 前端 E2E 验收测试 (W00 ~ W08)：
 ```sh
-# 运行全部 E2E 用例（包含网络断连、并发抢占、崩溃恢复等）
+# 运行 W08 集成、交付包装与全量回归验收
+make web-e2e MODULE=W08
+
+# 运行特定 Web 模块 (W00~W08)
+make web-e2e MODULE=W01
+
+# 运行全部 Web 端到端测试
+make web-e2e MODULE=all
+```
+
+#### 执行经典真实进程 E2E 回归测试 (M00 ~ M10)：
+```sh
+# 运行全部经典 E2E 用例（包含网络断连、并发抢占、崩溃恢复等）
 make e2e
 
 # 指定运行特定模块
 make e2e MODULE=M03      # 仅运行 M03 练习会话与重放用例
-make e2e MODULE=M04      # 仅运行 M04 考试会话与截止时间用例
+make e2e MODULE=M10      # 运行 M10 现代 SPA 交互全生命周期回归用例
 ```
 
 ---

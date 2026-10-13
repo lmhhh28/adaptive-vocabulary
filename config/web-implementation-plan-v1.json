@@ -1,0 +1,761 @@
+{
+  "schema_version": 1,
+  "design_version": "web-design-v1.1",
+  "created_at": "2026-09-11",
+  "scope": "Ant Design Web incremental implementation; all W modules planned, planning commands only are currently delivered",
+  "shared_owner": "W00",
+  "implementation_guide": "docs/12-web-implementation-plan.md",
+  "contract_guide": "docs/13-web-api-and-e2e-contract.md",
+  "baseline_plan": "config/implementation-plan-v1.json",
+  "acceptance_root": "artifacts/web-e2e",
+  "tasks": [
+    {
+      "id": "W00",
+      "title": "基础运行、共享组件与 E2E 框架",
+      "status": "complete",
+      "commands_available_now": true,
+      "depends_on": [],
+      "objective": "基础运行、共享组件与 E2E 框架可在依赖完成后单独真实启动并通过本模块端到端验收",
+      "owns": [
+        "Makefile",
+        "web/frontend/package.json",
+        "web/frontend/package-lock.json",
+        "web/frontend/tsconfig.json",
+        "web/frontend/vite.config.ts",
+        "web/frontend/index.html",
+        "web/frontend/src/main.tsx",
+        "web/frontend/src/app/",
+        "web/frontend/src/api/",
+        "web/frontend/src/components/",
+        "web/frontend/src/theme/",
+        "internal/platform/web_frontend.go",
+        "internal/platform/server.go",
+        "cmd/avocab/main.go",
+        "cmd/avocab/e2e_stub.go",
+        "cmd/avocab/e2e_learning.go",
+        "scripts/web_runtime.py",
+        "e2e/web_runner.py",
+        "e2e/support/web_harness.py",
+        "e2e/cases/W00/",
+        "e2e/fixtures/web/common/"
+      ],
+      "migration_prefix": null,
+      "read_first": [
+        "docs/11-web-frontend-design.md",
+        "docs/12-web-implementation-plan.md",
+        "docs/13-web-api-and-e2e-contract.md",
+        "docs/frontend-api.md"
+      ],
+      "start_command": "make web-run MODULE=W00 DATA_DIR=artifacts/manual/W00 LISTEN=127.0.0.1:0",
+      "entry_path": "/",
+      "e2e_command": "make web-e2e MODULE=W00",
+      "test_kind": "browser",
+      "runtime_processes": [
+        "go",
+        "chromium"
+      ],
+      "steps": [
+        "锁定前端依赖与构建 manifest，建立 Go 同源 SPA 接入和根路径 /client-context 代理",
+        "提供动态 feature descriptor 装配、主题、纯展示组件、transport 与 IndexedDB outbox 接口",
+        "实现 web-build/web-run/web-e2e，W 模块显式发现、动态端口、真实进程监督与证据校验",
+        "生产构建屏蔽测试控制端点；失败回收进程，正常二进制覆盖成功路径"
+      ],
+      "acceptance": [
+        {
+          "id": "W00-01",
+          "kind": "browser",
+          "scenario": "构建资源、路由、中文壳与真实资源哈希",
+          "file": "e2e/cases/W00/test_w00_01.py"
+        },
+        {
+          "id": "W00-02",
+          "kind": "browser",
+          "scenario": "真实 context、CSRF、维护与活动会话",
+          "file": "e2e/cases/W00/test_w00_02.py"
+        },
+        {
+          "id": "W00-03",
+          "kind": "browser",
+          "scenario": "outbox 重开/存储不可用与共享组件键盘",
+          "file": "e2e/cases/W00/test_w00_03.py"
+        },
+        {
+          "id": "W00-04",
+          "kind": "harness",
+          "scenario": "零测试、缺证据、超时、孤儿进程必须失败",
+          "file": "e2e/cases/W00/test_w00_04.py"
+        }
+      ],
+      "done_artifacts": [
+        "当前代码版本的 result.json",
+        "真实进程清单、独立服务日志和 ready/health 记录",
+        "SQLite关联不变量摘要",
+        "browser case 的 trace.zip、截图与资源manifest；worker case 的worker/provider日志"
+      ],
+      "verification": {
+        "result_path": "artifacts/web-e2e/run_20260912_032110_f664bfd8/W00/result.json",
+        "code_revision": "89305a64b273e9555fb0bf0b1ff58c7859f2d133"
+      }
+    },
+    {
+      "id": "W01",
+      "title": "练习恢复、历史、题卡与展示审计 API",
+      "status": "complete",
+      "commands_available_now": true,
+      "depends_on": [
+        "W00"
+      ],
+      "objective": "练习恢复、历史、题卡与展示审计 API可在依赖完成后单独真实启动并通过本模块端到端验收",
+      "owns": [
+        "internal/practice/",
+        "migrations/100_practice_feedback_views.sql",
+        "e2e/cases/W01/",
+        "e2e/fixtures/web/practice-api/"
+      ],
+      "migration_prefix": 100,
+      "read_first": [
+        "docs/11-web-frontend-design.md",
+        "docs/12-web-implementation-plan.md",
+        "docs/13-web-api-and-e2e-contract.md",
+        "docs/frontend-api.md"
+      ],
+      "start_command": "make web-run MODULE=W01 DATA_DIR=artifacts/manual/W01 LISTEN=127.0.0.1:0",
+      "entry_path": "/api/v1/health",
+      "e2e_command": "make web-e2e MODULE=W01",
+      "test_kind": "api",
+      "runtime_processes": [
+        "go"
+      ],
+      "steps": [
+        "实现详情快照、全部作答口径统计与最近30条题卡状态",
+        "实现题卡状态游标分页及按 ordinal 读取已答题，禁止未答/跨会话泄题",
+        "实现独立 feedback-view 审计与幂等回执，不混入既有学习 exposure/eligibility",
+        "验证原 attempts 请求重放及恢复一致，不创建虚构的练习回执查询接口"
+      ],
+      "acceptance": [
+        {
+          "id": "W01-01",
+          "kind": "api",
+          "scenario": "已答未 next 的完整反馈恢复",
+          "file": "e2e/cases/W01/test_w01_01.py"
+        },
+        {
+          "id": "W01-02",
+          "kind": "api",
+          "scenario": "原请求重放、响应丢失、换选项冲突",
+          "file": "e2e/cases/W01/test_w01_02.py"
+        },
+        {
+          "id": "W01-03",
+          "kind": "api",
+          "scenario": "超过30条题卡分页、计数和 ordinal=0",
+          "file": "e2e/cases/W01/test_w01_03.py"
+        },
+        {
+          "id": "W01-04",
+          "kind": "api",
+          "scenario": "未答、未来题、跨会话读取禁止泄题",
+          "file": "e2e/cases/W01/test_w01_04.py"
+        },
+        {
+          "id": "W01-05",
+          "kind": "api",
+          "scenario": "展示审计去重、key换正文、延迟补交",
+          "file": "e2e/cases/W01/test_w01_05.py"
+        },
+        {
+          "id": "W01-06",
+          "kind": "api",
+          "scenario": "展示不改变 attempt/review/cursor/normal_position/冷却/投影",
+          "file": "e2e/cases/W01/test_w01_06.py"
+        }
+      ],
+      "done_artifacts": [
+        "当前代码版本的 result.json",
+        "真实进程清单、独立服务日志和 ready/health 记录",
+        "SQLite关联不变量摘要",
+        "browser case 的 trace.zip、截图与资源manifest；worker case 的worker/provider日志"
+      ],
+      "verification": {
+        "result_path": "artifacts/web-e2e/run_20260912_033641_d7673829/W01/result.json",
+        "code_revision": "89305a64b273e9555fb0bf0b1ff58c7859f2d133"
+      }
+    },
+    {
+      "id": "W02",
+      "title": "自适应练习前端",
+      "status": "complete",
+      "commands_available_now": true,
+      "depends_on": [
+        "W00",
+        "W01"
+      ],
+      "objective": "自适应练习前端可在依赖完成后单独真实启动并通过本模块端到端验收",
+      "owns": [
+        "web/frontend/src/features/practice/",
+        "e2e/cases/W02/",
+        "e2e/fixtures/web/practice-ui/"
+      ],
+      "migration_prefix": null,
+      "read_first": [
+        "docs/11-web-frontend-design.md",
+        "docs/12-web-implementation-plan.md",
+        "docs/13-web-api-and-e2e-contract.md",
+        "docs/frontend-api.md"
+      ],
+      "start_command": "make web-run MODULE=W02 DATA_DIR=artifacts/manual/W02 LISTEN=127.0.0.1:0",
+      "entry_path": "/practice",
+      "e2e_command": "make web-e2e MODULE=W02",
+      "test_kind": "browser",
+      "runtime_processes": [
+        "go",
+        "chromium"
+      ],
+      "steps": [
+        "实现点击/1–4即答、A/D与题卡导航、当前题和查看位置分离",
+        "实现正确500ms自动前进、错误停留、所有取消条件及单次激活锁",
+        "实现分页历史回看和展示 outbox、刷新未知结果恢复",
+        "实现结束、无候选、维护与活动会话冲突；复用 W00 组件"
+      ],
+      "acceptance": [
+        {
+          "id": "W02-01",
+          "kind": "browser",
+          "scenario": "点击和数字即答、无提交按钮、防双击",
+          "file": "e2e/cases/W02/test_w02_01.py"
+        },
+        {
+          "id": "W02-02",
+          "kind": "browser",
+          "scenario": "正确自动前进与导航/解析/页面隐藏取消",
+          "file": "e2e/cases/W02/test_w02_02.py"
+        },
+        {
+          "id": "W02-03",
+          "kind": "browser",
+          "scenario": "错误持续停留及主动下一题",
+          "file": "e2e/cases/W02/test_w02_03.py"
+        },
+        {
+          "id": "W02-04",
+          "kind": "browser",
+          "scenario": "超过30题回看、返回当前题、展示记录和计数",
+          "file": "e2e/cases/W02/test_w02_04.py"
+        },
+        {
+          "id": "W02-05",
+          "kind": "browser",
+          "scenario": "真实已接受响应丢失后的刷新收敛",
+          "file": "e2e/cases/W02/test_w02_05.py"
+        },
+        {
+          "id": "W02-06",
+          "kind": "browser",
+          "scenario": "无候选、冲突、维护和结束边界",
+          "file": "e2e/cases/W02/test_w02_06.py"
+        }
+      ],
+      "done_artifacts": [
+        "当前代码版本的 result.json",
+        "真实进程清单、独立服务日志和 ready/health 记录",
+        "SQLite关联不变量摘要",
+        "browser case 的 trace.zip、截图与资源manifest；worker case 的worker/provider日志"
+      ],
+      "verification": {
+        "result_path": "artifacts/web-e2e/run_20260912_035840_0892f3c5/W02/result.json",
+        "code_revision": "89305a64b273e9555fb0bf0b1ff58c7859f2d133"
+      }
+    },
+    {
+      "id": "W03",
+      "title": "阶段考试、持久事件队列与结果",
+      "status": "complete",
+      "commands_available_now": true,
+      "depends_on": [
+        "W00"
+      ],
+      "objective": "阶段考试、持久事件队列与结果可在依赖完成后单独真实启动并通过本模块端到端验收",
+      "owns": [
+        "web/frontend/src/features/exam/",
+        "internal/exam/",
+        "e2e/cases/W03/",
+        "e2e/fixtures/web/exam/"
+      ],
+      "migration_prefix": null,
+      "read_first": [
+        "docs/11-web-frontend-design.md",
+        "docs/12-web-implementation-plan.md",
+        "docs/13-web-api-and-e2e-contract.md",
+        "docs/frontend-api.md"
+      ],
+      "start_command": "make web-run MODULE=W03 DATA_DIR=artifacts/manual/W03 LISTEN=127.0.0.1:0",
+      "entry_path": "/exams/new",
+      "e2e_command": "make web-e2e MODULE=W03",
+      "test_kind": "browser",
+      "runtime_processes": [
+        "go",
+        "chromium"
+      ],
+      "steps": [
+        "实现组卷、固定题卡、1–4与A/D、select/clear/reselect持久事件",
+        "实现 unknown 原文重试、not_accepted rebase、telemetry-gap恢复",
+        "实现交卷前队列屏障、截止计时、放弃与 submitted 状态收敛",
+        "实现结果页有效分母、null/void/首次历史与逐题解析"
+      ],
+      "acceptance": [
+        {
+          "id": "W03-01",
+          "kind": "browser",
+          "scenario": "固定试卷、快捷键、改答事件且无提前答案",
+          "file": "e2e/cases/W03/test_w03_01.py"
+        },
+        {
+          "id": "W03-02",
+          "kind": "browser",
+          "scenario": "unknown/rebase/顺序水位和同一事件重试",
+          "file": "e2e/cases/W03/test_w03_02.py"
+        },
+        {
+          "id": "W03-03",
+          "kind": "browser",
+          "scenario": "队列丢失后的 telemetry-gap",
+          "file": "e2e/cases/W03/test_w03_03.py"
+        },
+        {
+          "id": "W03-04",
+          "kind": "browser",
+          "scenario": "待确认队列不能越过交卷屏障",
+          "file": "e2e/cases/W03/test_w03_04.py"
+        },
+        {
+          "id": "W03-05",
+          "kind": "browser",
+          "scenario": "deadline、迟到事件及放弃返回 submitted",
+          "file": "e2e/cases/W03/test_w03_05.py"
+        },
+        {
+          "id": "W03-06",
+          "kind": "browser",
+          "scenario": "结果 null、void、首次记录缺失与解析",
+          "file": "e2e/cases/W03/test_w03_06.py"
+        }
+      ],
+      "done_artifacts": [
+        "当前代码版本的 result.json",
+        "真实进程清单、独立服务日志和 ready/health 记录",
+        "SQLite关联不变量摘要",
+        "browser case 的 trace.zip、截图与资源manifest；worker case 的worker/provider日志"
+      ],
+      "verification": {
+        "result_path": "artifacts/web-e2e/run_20260912_042348_c8a75a4c/W03/result.json",
+        "code_revision": "89305a64b273e9555fb0bf0b1ff58c7859f2d133"
+      }
+    },
+    {
+      "id": "W04",
+      "title": "题库、来源与内容版本发现",
+      "status": "complete",
+      "commands_available_now": true,
+      "depends_on": [
+        "W00"
+      ],
+      "objective": "题库、来源与内容版本发现可在依赖完成后单独真实启动并通过本模块端到端验收",
+      "owns": [
+        "web/frontend/src/features/banks/",
+        "internal/bank/",
+        "e2e/cases/W04/",
+        "e2e/fixtures/web/banks/"
+      ],
+      "migration_prefix": null,
+      "read_first": [
+        "docs/11-web-frontend-design.md",
+        "docs/12-web-implementation-plan.md",
+        "docs/13-web-api-and-e2e-contract.md",
+        "docs/frontend-api.md"
+      ],
+      "start_command": "make web-run MODULE=W04 DATA_DIR=artifacts/manual/W04 LISTEN=127.0.0.1:0",
+      "entry_path": "/banks",
+      "e2e_command": "make web-e2e MODULE=W04",
+      "test_kind": "browser",
+      "runtime_processes": [
+        "go",
+        "chromium"
+      ],
+      "steps": [
+        "实现空态、题库/来源创建与列表、成员变更、归档",
+        "提供真实 sense-version 和 question-version 发现及稳定分页",
+        "实施活动会话防泄题、CAS和全局维护状态",
+        "对生成/质量模块提供真实DTO和内容ID，文件导入留给W05"
+      ],
+      "acceptance": [
+        {
+          "id": "W04-01",
+          "kind": "browser",
+          "scenario": "空态到真实题库/来源创建",
+          "file": "e2e/cases/W04/test_w04_01.py"
+        },
+        {
+          "id": "W04-02",
+          "kind": "browser",
+          "scenario": "详情、成员变化、CAS与归档",
+          "file": "e2e/cases/W04/test_w04_02.py"
+        },
+        {
+          "id": "W04-03",
+          "kind": "browser",
+          "scenario": "真实内容版本发现与稳定分页",
+          "file": "e2e/cases/W04/test_w04_03.py"
+        },
+        {
+          "id": "W04-04",
+          "kind": "browser",
+          "scenario": "活动会话保护和维护禁写",
+          "file": "e2e/cases/W04/test_w04_04.py"
+        }
+      ],
+      "done_artifacts": [
+        "当前代码版本的 result.json",
+        "真实进程清单、独立服务日志和 ready/health 记录",
+        "SQLite关联不变量摘要",
+        "browser case 的 trace.zip、截图与资源manifest；worker case 的worker/provider日志"
+      ],
+      "verification": {
+        "result_path": "artifacts/web-e2e/run_20260912_045151_fb5b09e7/W04/result.json",
+        "code_revision": "89305a64b273e9555fb0bf0b1ff58c7859f2d133"
+      }
+    },
+    {
+      "id": "W05",
+      "title": "词表导入与歧义处理",
+      "status": "complete",
+      "commands_available_now": true,
+      "depends_on": [
+        "W00",
+        "W04"
+      ],
+      "objective": "词表导入与歧义处理可在依赖完成后单独真实启动并通过本模块端到端验收",
+      "owns": [
+        "web/frontend/src/features/imports/",
+        "internal/importer/",
+        "e2e/cases/W05/",
+        "e2e/fixtures/web/imports/"
+      ],
+      "migration_prefix": null,
+      "read_first": [
+        "docs/11-web-frontend-design.md",
+        "docs/12-web-implementation-plan.md",
+        "docs/13-web-api-and-e2e-contract.md",
+        "docs/frontend-api.md"
+      ],
+      "start_command": "make web-run MODULE=W05 DATA_DIR=artifacts/manual/W05 LISTEN=127.0.0.1:0",
+      "entry_path": "/imports",
+      "e2e_command": "make web-e2e MODULE=W05",
+      "test_kind": "browser",
+      "runtime_processes": [
+        "go",
+        "chromium"
+      ],
+      "steps": [
+        "实现粘贴/TXT/CSV/JSON导入和当前2MiB/5000行校验",
+        "实现真实任务总数、条目分页、采纳多个sense或排除",
+        "统一版本/幂等/未知结果恢复，保留原上传动作",
+        "核对导入事实与题库成员变化，不共用生成sense_refs类型"
+      ],
+      "acceptance": [
+        {
+          "id": "W05-01",
+          "kind": "browser",
+          "scenario": "输入格式与大小/行数边界",
+          "file": "e2e/cases/W05/test_w05_01.py"
+        },
+        {
+          "id": "W05-02",
+          "kind": "browser",
+          "scenario": "分页消歧、多个词义采纳与排除",
+          "file": "e2e/cases/W05/test_w05_02.py"
+        },
+        {
+          "id": "W05-03",
+          "kind": "browser",
+          "scenario": "CAS/幂等及已接受响应丢失",
+          "file": "e2e/cases/W05/test_w05_03.py"
+        },
+        {
+          "id": "W05-04",
+          "kind": "browser",
+          "scenario": "导入汇总与题库成员一致",
+          "file": "e2e/cases/W05/test_w05_04.py"
+        }
+      ],
+      "done_artifacts": [
+        "当前代码版本的 result.json",
+        "真实进程清单、独立服务日志和 ready/health 记录",
+        "SQLite关联不变量摘要",
+        "browser case 的 trace.zip、截图与资源manifest；worker case 的worker/provider日志"
+      ],
+      "verification": {
+        "result_path": "artifacts/web-e2e/run_20260912_052727_2f69594f/W05/result.json",
+        "code_revision": "89305a64b273e9555fb0bf0b1ff58c7859f2d133"
+      }
+    },
+    {
+      "id": "W06",
+      "title": "内容生成、任务与异常发现",
+      "status": "complete",
+      "commands_available_now": true,
+      "depends_on": [
+        "W00",
+        "W04"
+      ],
+      "objective": "内容生成、任务与异常发现可在依赖完成后单独真实启动并通过本模块端到端验收",
+      "owns": [
+        "web/frontend/src/features/generation/",
+        "internal/generation/",
+        "e2e/cases/W06/",
+        "e2e/fixtures/web/generation/"
+      ],
+      "migration_prefix": null,
+      "read_first": [
+        "docs/11-web-frontend-design.md",
+        "docs/12-web-implementation-plan.md",
+        "docs/13-web-api-and-e2e-contract.md",
+        "docs/frontend-api.md"
+      ],
+      "start_command": "make web-run MODULE=W06 DATA_DIR=artifacts/manual/W06 LISTEN=127.0.0.1:0",
+      "entry_path": "/generation",
+      "e2e_command": "make web-e2e MODULE=W06",
+      "test_kind": "browser_worker",
+      "runtime_processes": [
+        "go",
+        "chromium",
+        "langgraph-worker",
+        "local-http-provider"
+      ],
+      "steps": [
+        "实现真实词义版本选择、预算确认、创建与任务/候选详情",
+        "提供任务列表及quality-findings稳定分页，兼容既有limit调用",
+        "使用真实worker和本地确定性HTTP provider完成发布/拒绝与恢复",
+        "清晰呈现pending/published/rejected/uncertain/pending_maintenance和预算状态"
+      ],
+      "acceptance": [
+        {
+          "id": "W06-01",
+          "kind": "browser_worker",
+          "scenario": "真实版本选择与202任务登记",
+          "file": "e2e/cases/W06/test_w06_01.py"
+        },
+        {
+          "id": "W06-02",
+          "kind": "browser_worker",
+          "scenario": "真实worker正负候选与正式发布事实",
+          "file": "e2e/cases/W06/test_w06_02.py"
+        },
+        {
+          "id": "W06-03",
+          "kind": "browser_worker",
+          "scenario": "worker恢复与维护等待",
+          "file": "e2e/cases/W06/test_w06_03.py"
+        },
+        {
+          "id": "W06-04",
+          "kind": "browser_worker",
+          "scenario": "预算拒绝和失败状态",
+          "file": "e2e/cases/W06/test_w06_04.py"
+        },
+        {
+          "id": "W06-05",
+          "kind": "browser",
+          "scenario": "任务/异常分页及活动会话保护",
+          "file": "e2e/cases/W06/test_w06_05.py"
+        }
+      ],
+      "done_artifacts": [
+        "当前代码版本的 result.json",
+        "真实进程清单、独立服务日志和 ready/health 记录",
+        "SQLite关联不变量摘要",
+        "browser case 的 trace.zip、截图与资源manifest；worker case 的worker/provider日志"
+      ],
+      "verification": {
+        "result_path": "artifacts/web-e2e/run_20260912_060921_1f58eee1/W06/result.json",
+        "code_revision": "89305a64b273e9555fb0bf0b1ff58c7859f2d133"
+      }
+    },
+    {
+      "id": "W07",
+      "title": "质量处置、学习报告与维护",
+      "status": "complete",
+      "commands_available_now": true,
+      "depends_on": [
+        "W00",
+        "W04",
+        "W06"
+      ],
+      "objective": "质量处置、学习报告与维护可在依赖完成后单独真实启动并通过本模块端到端验收",
+      "owns": [
+        "web/frontend/src/features/quality/",
+        "internal/revision/",
+        "internal/maintenance/",
+        "e2e/cases/W07/",
+        "e2e/fixtures/web/quality/"
+      ],
+      "migration_prefix": null,
+      "read_first": [
+        "docs/11-web-frontend-design.md",
+        "docs/12-web-implementation-plan.md",
+        "docs/13-web-api-and-e2e-contract.md",
+        "docs/frontend-api.md"
+      ],
+      "start_command": "make web-run MODULE=W07 DATA_DIR=artifacts/manual/W07 LISTEN=127.0.0.1:0",
+      "entry_path": "/quality",
+      "e2e_command": "make web-e2e MODULE=W07",
+      "test_kind": "browser_worker",
+      "runtime_processes": [
+        "go",
+        "chromium",
+        "langgraph-worker",
+        "local-http-provider"
+      ],
+      "steps": [
+        "使用W04/W06真实发现接口实现异常及证据详情",
+        "实现resolution/evidence disposition/retire，按实际语义提示结果",
+        "实现维护状态、业务failed处理和学习报告样本条件",
+        "不实现当前404修订发布或虚构维护/备份HTTP入口"
+      ],
+      "acceptance": [
+        {
+          "id": "W07-01",
+          "kind": "browser_worker",
+          "scenario": "处置记录与内容发布事实区分",
+          "file": "e2e/cases/W07/test_w07_01.py"
+        },
+        {
+          "id": "W07-02",
+          "kind": "browser",
+          "scenario": "退役影响后续选题并保留旧事实",
+          "file": "e2e/cases/W07/test_w07_02.py"
+        },
+        {
+          "id": "W07-03",
+          "kind": "browser",
+          "scenario": "重建成功与HTTP200业务失败",
+          "file": "e2e/cases/W07/test_w07_03.py"
+        },
+        {
+          "id": "W07-04",
+          "kind": "browser",
+          "scenario": "活动会话保护和维护禁写",
+          "file": "e2e/cases/W07/test_w07_04.py"
+        },
+        {
+          "id": "W07-05",
+          "kind": "browser",
+          "scenario": "学习报告null及证据条件",
+          "file": "e2e/cases/W07/test_w07_05.py"
+        }
+      ],
+      "done_artifacts": [
+        "当前代码版本的 result.json",
+        "真实进程清单、独立服务日志和 ready/health 记录",
+        "SQLite关联不变量摘要",
+        "browser case 的 trace.zip、截图与资源manifest；worker case 的worker/provider日志"
+      ],
+      "verification": {
+        "result_path": "artifacts/web-e2e/run_20260912_062717_1f7ca7d0/W07/result.json",
+        "code_revision": "89305a64b273e9555fb0bf0b1ff58c7859f2d133"
+      }
+    },
+    {
+      "id": "W08",
+      "title": "集成、交付包装与全量回归",
+      "status": "complete",
+      "commands_available_now": true,
+      "depends_on": [
+        "W01",
+        "W02",
+        "W03",
+        "W04",
+        "W05",
+        "W06",
+        "W07"
+      ],
+      "objective": "集成、交付包装与全量回归可在依赖完成后单独真实启动并通过本模块端到端验收",
+      "owns": [
+        "scripts/web_release.py",
+        "config/web-release.json",
+        "web/templates/",
+        "web/static/",
+        "e2e/cases/W08/",
+        "e2e/fixtures/web/integration/",
+        "e2e/cases/M10/",
+        "docs/web-release-acceptance.md",
+        "docs/runbook.md",
+        "docs/developer-setup.md"
+      ],
+      "migration_prefix": null,
+      "read_first": [
+        "docs/11-web-frontend-design.md",
+        "docs/12-web-implementation-plan.md",
+        "docs/13-web-api-and-e2e-contract.md",
+        "docs/frontend-api.md"
+      ],
+      "start_command": "make web-run MODULE=W08 DATA_DIR=artifacts/manual/W08 LISTEN=127.0.0.1:0",
+      "entry_path": "/",
+      "e2e_command": "make web-e2e MODULE=W08",
+      "test_kind": "browser_worker",
+      "runtime_processes": [
+        "go",
+        "chromium",
+        "langgraph-worker",
+        "local-http-provider"
+      ],
+      "steps": [
+        "整合全部模块manifest并验证干净构建、静态资源随Go交付、不同cwd启动",
+        "执行学习与内容完整流程、跨页面/刷新/重启恢复",
+        "收尾旧页面控制器，迁移M10的旧提交按钮与快捷键断言",
+        "验证响应式/可访问性、全部W和旧M回归、进程清理及发布证据"
+      ],
+      "acceptance": [
+        {
+          "id": "W08-01",
+          "kind": "browser",
+          "scenario": "完整学习与跨页面恢复",
+          "file": "e2e/cases/W08/test_w08_01.py"
+        },
+        {
+          "id": "W08-02",
+          "kind": "browser_worker",
+          "scenario": "导入、生成、质量和可用内容全链路",
+          "file": "e2e/cases/W08/test_w08_02.py"
+        },
+        {
+          "id": "W08-03",
+          "kind": "browser",
+          "scenario": "Go构建产物包装、不同cwd和重启",
+          "file": "e2e/cases/W08/test_w08_03.py"
+        },
+        {
+          "id": "W08-04",
+          "kind": "browser",
+          "scenario": "五档宽度、长文、键盘输入法弹层焦点",
+          "file": "e2e/cases/W08/test_w08_04.py"
+        },
+        {
+          "id": "W08-05",
+          "kind": "browser",
+          "scenario": "旧回归、新旧控制器边界与进程回收",
+          "file": "e2e/cases/W08/test_w08_05.py"
+        }
+      ],
+      "done_artifacts": [
+        "当前代码版本的 result.json",
+        "真实进程清单、独立服务日志和 ready/health 记录",
+        "SQLite关联不变量摘要",
+        "browser case 的 trace.zip、截图与资源manifest；worker case 的worker/provider日志"
+      ],
+      "verification": {
+        "result_path": "artifacts/web-e2e/run_20260912_064938_8614495d/W08/result.json",
+        "code_revision": "89305a64b273e9555fb0bf0b1ff58c7859f2d133"
+      }
+    }
+  ]
+}

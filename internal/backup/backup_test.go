@@ -111,8 +111,8 @@ func TestBackupCreateVerifyRestore(t *testing.T) {
 	if manifest.SnapshotWatermark <= 0 {
 		t.Errorf("expected watermark > 0, got %d", manifest.SnapshotWatermark)
 	}
-	if manifest.SchemaVersion != 90 {
-		t.Errorf("expected schema_version 90, got %d", manifest.SchemaVersion)
+	if manifest.SchemaVersion != 100 {
+		t.Errorf("expected schema_version 100, got %d", manifest.SchemaVersion)
 	}
 	if len(manifest.Files) != 1 || manifest.Files[0].RelativePath != "app.db" {
 		t.Errorf("unexpected files in manifest: %+v", manifest.Files)

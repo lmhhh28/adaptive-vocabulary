@@ -145,10 +145,18 @@ func (s *Server) Start() error {
 		SchemaVersion: s.SchemaVersion,
 	}
 
-	mux.HandleFunc("/", home.ServeHome)
+	webFrontend := NewWebFrontendHandler(home)
+
+	mux.HandleFunc("/", webFrontend.ServeSPA)
 	mux.HandleFunc("/client-context", home.ServeClientContext)
 	mux.HandleFunc("/api/v1/health", home.ServeHealth)
 	mux.HandleFunc("/api/v1/test/action", home.ServeTestPost)
+	mux.HandleFunc("/api/v1/web-manifest", webFrontend.ServeManifest)
+
+	assetsDir := filepath.Join(webFrontend.DistDir, "assets")
+	if info, err := os.Stat(assetsDir); err == nil && info.IsDir() {
+		mux.Handle("/assets/", webFrontend.ServeAssets())
+	}
 
 	shellStaticDir := findWebDir("web/static/shell")
 	if info, err := os.Stat(shellStaticDir); err == nil && info.IsDir() {
